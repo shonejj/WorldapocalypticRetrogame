@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <title>%GAME_TITLE%</title>
+  <meta name="description" content="%GAME_DESCRIPTION%" />
+  <meta name="theme-color" content="%THEME_COLOR%" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+</head>
+<body>
+  <canvas id="game" aria-label="%GAME_TITLE% game view"></canvas>
+  <div class="vignette"></div>
+  <div class="grain"></div>
+  <noscript>This game needs JavaScript and WebGL.</noscript>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

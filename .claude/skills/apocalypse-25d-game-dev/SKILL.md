@@ -3,7 +3,7 @@ name: apocalypse-25d-game-dev
 description: Build the Worldapocalyptic retro 2.5D game with Three.js (rendering), Anime.js v4 (tweens/UI/FX), and open-source 2D physics + ragdolls (Planck.js/Rapier/Matter.js). Use when writing or changing game code, scenes, characters, ragdolls, parallax environments, camera, VFX, HUD animation, or when picking free/CC0 assets.
 ---
 
-# Worldapocalyptic 2.5D game development
+# The Last Frequency — 2.5D game development
 
 Stack decisions and working knowledge for this repo. Versions below were checked
 against the npm packages in Nov 2026 (animejs 4.5.0, three 0.187.0, planck 1.5.1,
@@ -60,8 +60,9 @@ the bottleneck.
 4. Verify headless where possible (`node` + Planck steps; Anime.js with
    `engine.useDefaultMainLoop = false` and `anim.seek(ms)`); verify visuals with the
    preinstalled Playwright Chromium + a screenshot.
-5. Check asset licences before committing anything under `assets/` (see ref 4) and
-   record them in `assets/CREDITS.md`.
+5. Run `npm run check` (typecheck + vitest + build). For visuals, run `npm run dev` and
+   screenshot with Playwright; for offline, `vite preview` + `context.setOffline(true)`.
+6. If external assets are ever added, check licences first (ref 4) and record them in `assets/CREDITS.md`.
 
 ## References (read as needed)
 

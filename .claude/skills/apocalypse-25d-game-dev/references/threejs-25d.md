@@ -22,9 +22,9 @@ Verify the planck path exists for the pinned version, or use Vite + npm instead.
 const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-// Retro look: low internal resolution, upscaled with crisp pixels
-renderer.setSize(480, 270, false);          // internal res; false = don't touch CSS size
-canvas.style.cssText = 'width:100vw;height:100vh;image-rendering:pixelated;object-fit:contain';
+// This project: native resolution (DPR capped at 2 × user render scale) + NearestFilter
+// textures at 32–64 texels/m gives "close-to-realistic pixel art". A tiny internal
+// resolution (e.g. 480×270) is only for a deliberately crunchy retro mode.
 
 const VIEW_H = 9;                            // world units visible vertically
 function makeCam(aspect) {
