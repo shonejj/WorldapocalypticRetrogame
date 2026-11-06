@@ -4,7 +4,7 @@
  * the listener (camera centre), so audio doubles as a threat cue.
  */
 export type Sfx = 'gunshot' | 'shotgun' | 'rifle' | 'melee' | 'hit' | 'step' | 'stepWet' | 'groan' | 'screech'
-  | 'pickup' | 'reload' | 'empty' | 'hurt' | 'death' | 'impactMetal' | 'impactWood' | 'heal' | 'ui' | 'alert' | 'radio';
+  | 'pickup' | 'reload' | 'empty' | 'hurt' | 'death' | 'impactMetal' | 'impactWood' | 'heal' | 'ui' | 'alert' | 'radio' | 'thunder';
 
 export class Audio {
   ctx: AudioContext | null = null;
@@ -127,6 +127,7 @@ export class Audio {
       case 'heal': tone('sine', 440, 660, 0.12, 0.3); break;
       case 'ui': noiseHit('highpass', 2200, 2, 0.15, 0.03); break;
       case 'alert': tone('square', 520, 520, 0.08, 0.12); tone('square', 390, 390, 0.08, 0.12, 0.14); break;
+      case 'thunder': { const g = ctx.createGain(); env(g, 0.08, 0.9, 3.2); g.connect(out); const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 160; f.connect(g); const n = this.noise(f); n.playbackRate.value = 0.35; n.start(t); n.stop(t + 3.6); tone('sine', 52, 30, 0.5, 2.2); break; }
       case 'radio': noiseHit('bandpass', 1600, 3, 0.2, 0.6); tone('sine', 1200, 1180, 0.05, 0.6); break;
     }
   }

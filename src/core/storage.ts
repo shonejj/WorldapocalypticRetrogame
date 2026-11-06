@@ -21,11 +21,13 @@ export interface Settings {
   screenShake: boolean;
   showFps: boolean;
   touchControls: 'auto' | 'on' | 'off';
+  quality: 'high' | 'low';
+  nameTags: boolean;
 }
 
 export const defaultSettings: Settings = {
   masterVolume: 0.8, sfxVolume: 0.9, ambienceVolume: 0.7, renderScale: 1,
-  rain: true, screenShake: true, showFps: false, touchControls: 'auto',
+  rain: true, screenShake: true, showFps: false, touchControls: 'auto', quality: 'high', nameTags: true,
 };
 
 export const loadSettings = (): Settings => store.get('settings', defaultSettings);

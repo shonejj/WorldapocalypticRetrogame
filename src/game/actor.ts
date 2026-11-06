@@ -1,6 +1,5 @@
-import { blendPose, solve, targetPose, zeroPose, type AnimInput, type Gait, type Pose, type Skeleton } from './rig';
 import { INFECTED, MELEE_SWING_TIME, WEAPONS, type InfectedDef, type InfectedType, type ItemId, type SurvivorDef, type WeaponId } from './data';
-import type { Ragdoll } from '../physics/ragdoll';
+import type { SpriteRagdoll } from '../physics/spriteRagdoll';
 import { clamp } from '../core/rng';
 
 /** What a brain (player input, companion AI, infected AI, later: network) wants this tick. */
@@ -31,7 +30,6 @@ export class Actor {
   readonly team: 'survivor' | 'infected';
   readonly name: string;
   readonly scale: number;
-  readonly gait: Gait;
   readonly survivor?: SurvivorDef;
   readonly infected?: InfectedDef;
   readonly infectedType?: InfectedType;
@@ -50,32 +48,30 @@ export class Actor {
 
   hurtT = 0; recoil = 0; stunT = 0;
   phase = 0; time = Math.random() * 10; lastStepPhase = 0;
-  pose: Pose = zeroPose(); private tgt: Pose = zeroPose(); skel: Skeleton;
-  private anim: AnimInput;
+  /** Weapon slung on the back until the first time the survivor needs it. */
+  holstered = true; drawT = -1; lastCombat = -100; shotsFired = 0;
 
   // infected AI state (owned by InfectedBrain)
   state: InfectedState = 'idle';
   suspicion = 0; targetId = 0; homeX: number; investigateX = 0; stateT = 0;
 
-  ragdoll: Ragdoll | null = null;
+  ragdoll: SpriteRagdoll | null = null;
   light = 0.4;                 // set by renderer: 0 dark … 1 under a lamp
-  lastHit = { dir: 1 as 1 | -1, power: 0, part: 'torso' as const };
+  lastHit = { dir: 1 as 1 | -1, power: 0 };
 
   constructor(opts: { x: number; survivor?: SurvivorDef; infected?: InfectedType }) {
     this.x = opts.x; this.homeX = opts.x;
     if (opts.survivor) {
       const s = opts.survivor;
-      this.team = 'survivor'; this.survivor = s; this.name = s.name; this.scale = 1; this.gait = 'human';
+      this.team = 'survivor'; this.survivor = s; this.name = s.name; this.scale = 1;
       this.hp = this.maxHp = s.maxHp; this.weapon = s.weapon; this.meleeWeapon = s.melee;
       this.mag[s.weapon] = WEAPONS[s.weapon].mag;
     } else {
       const t = opts.infected ?? 'common', d = INFECTED[t];
       this.team = 'infected'; this.infected = d; this.infectedType = t; this.name = d.name;
-      this.scale = d.scale * (0.94 + Math.random() * 0.1); this.gait = d.gait;
+      this.scale = d.scale * (0.95 + Math.random() * 0.08);
       this.hp = this.maxHp = d.maxHp; this.weapon = 'pipe'; this.meleeWeapon = 'pipe';
     }
-    this.anim = { speed: 0, run: false, crouch: false, aim: false, hold: 'none', meleeT: -1, recoil: 0, hurt: 0, attackT: -1, time: 0, phase: 0, gait: this.gait, dormant: false, lean: 0 };
-    this.skel = solve(this.pose, this.scale, this.facing);
   }
 
   get height(): number { return (this.state === 'dormant' && this.team === 'infected' ? 0.95 : this.crouching ? 1.25 : 1.82) * this.scale; }
@@ -90,7 +86,7 @@ export class Actor {
     const resist = this.infected?.knockbackResist ?? 1;
     this.knockVx += dir * knock * resist * 0.6;
     if (this.infected && resist > 0.5) this.stunT = Math.max(this.stunT, 0.18 * resist);
-    this.lastHit = { dir, power: knock, part: 'torso' };
+    this.lastHit = { dir, power: knock };
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }
   }
 
@@ -133,20 +129,18 @@ export class Actor {
     if (this.team === 'survivor') this.stepWeapons(dt, it, host);
     else this.stepClaws(dt, it, host);
 
-    // ---- animation
-    const a = this.anim;
-    a.speed = Math.abs(this.vx); a.run = this.running || (this.team === 'infected' && it.run); a.crouch = this.crouching;
-    a.aim = this.team === 'survivor' && (this.aimT > 0 || it.aim) && this.weaponDef.hold !== 'melee' && this.reloadT <= 0 && this.healT < 0;
-    a.hold = this.team === 'survivor' ? this.weaponDef.hold : 'none';
-    a.meleeT = this.meleeT >= 0 ? this.meleeT / MELEE_SWING_TIME : -1;
-    a.attackT = this.attackT >= 0 && this.infected ? this.attackT / this.infected.attackTime : -1;
-    a.recoil = this.recoil; a.hurt = this.hurtT; a.time = this.time; a.phase = this.phase;
-    a.dormant = this.state === 'dormant'; a.lean = this.reloadT > 0 ? -0.1 : 0;
-    a.gait = this.team === 'infected' && !it.run && this.gait === 'sprint' ? 'shamble' : this.gait;
-    targetPose(a, this.tgt);
-    blendPose(this.pose, this.tgt, this.state === 'waking' ? 4 : 16, dt);
-    solve(this.pose, this.scale, this.facing, this.skel);
+    // ---- weapon readiness (draw from the back when combat starts)
+    if (this.team === 'survivor') {
+      const wantsWeapon = it.aim || it.fire || this.aimT > 0;
+      if (wantsWeapon) this.lastCombat = this.time;
+      if (wantsWeapon && this.holstered && this.drawT < 0) this.drawT = 0;
+      if (this.drawT >= 0) { this.drawT += dt; if (this.drawT >= 0.6) { this.drawT = -1; this.holstered = false; } }
+      if (!this.holstered && this.time - this.lastCombat > 9) this.holstered = true;
+    }
   }
+
+  /** Is the survivor currently in an aiming stance? */
+  get aiming(): boolean { return this.team === 'survivor' && !this.holstered && this.drawT < 0 && (this.aimT > 0 || this.forceAim) && this.reloadT <= 0 && this.healT < 0; }
 
   private stepWeapons(dt: number, it: Intent, host: ActorHost): void {
     const w = this.weaponDef;
@@ -180,6 +174,7 @@ export class Actor {
       this.meleeT = 0; this.meleeHitDone = false; this.cooldown = WEAPONS[this.meleeWeapon].cooldown; return;
     }
     // fire
+    if (it.fire && this.cooldown <= 0 && (this.holstered || this.drawT >= 0)) { this.aimT = 1.6; return; }
     if (it.fire && this.cooldown <= 0) {
       if (!w.ammo) { this.meleeT = 0; this.meleeHitDone = false; this.cooldown = w.cooldown; return; }
       const m = this.mag[this.weapon] ?? 0;
@@ -189,7 +184,7 @@ export class Actor {
         return;
       }
       this.mag[this.weapon] = m - 1;
-      this.cooldown = w.cooldown; this.aimT = 1.6; this.recoil = 1;
+      this.cooldown = w.cooldown; this.aimT = 1.6; this.recoil = 1; this.shotsFired++;
       host.fire(this);
     }
   }

@@ -34,6 +34,9 @@ npm run dev        # http://localhost:5173 (window.__game is exposed in dev for 
 ```bash
 npm run check      # typecheck + tests + production build
 ```
+```bash
+npm run assets     # rebuild public/assets from assets-src (after art or store-name changes)
+```
 
 Stack: **Three.js** (rendering), **Anime.js v4** (tweens, UI, camera shake, lamp flicker), **Planck.js** (2D physics, ragdolls), **Vite** + **TypeScript**. No runtime CDN or asset downloads — everything is bundled.
 
@@ -45,8 +48,9 @@ The build uses relative URLs (`base: './'`), so it works under `https://<user>.g
 
 ## How it is built
 
-- **All art is generated in code** (`src/render/art/*`) from seeded pixel painters — buildings, the FRESH VEGGIES store, vehicles, props, vegetation, sky, and every character. Nothing is downloaded, so it is offline-safe and tiny (~230 KB gzipped).
-- **Characters are cut-out rigs** (`src/game/rig.ts`): 10 limb parts animated procedurally while alive and handed to a Planck ragdoll on death. A *Skin* (part → texture + pivot) is the swap point for hand-drawn art later.
+- **Painted art, processed at build time** (`scripts/`, see [docs/ASSET_PIPELINE.md](docs/ASSET_PIPELINE.md)): the parallax layers are kit-bashed into a longer street across depth bands; Reed's animation is extracted from a video (idle, walk, run, draw, aim, aim-walk); every character gets an atlas, cut-out ragdoll limbs and a portrait. ~7.8 MB, all precached for offline play.
+- **Lighting & atmosphere** (`src/render/lighting.ts`, `worldView.ts`, `renderer.ts`): lamps, shop windows and muzzle flashes are real 2D lights on characters and props; wet-street reflections, rain, mist, lightning, bloom and a film grade.
+- **Ragdolls from the art** (`src/physics/spriteRagdoll.ts`): on death the sprite is swapped for its cut-out limbs on Planck bodies with neck/hip/knee joints.
 - **One ruleset for everyone** (`src/game/actor.ts`): player input, squad bots and infected all produce the same `Intent` each fixed 60 Hz tick — the seam a future network layer will use.
 - **Stealth through sound and sight** (`src/game/ai.ts`): infected build suspicion from what they see (distance, light, crouching, running) and walk to noises (footsteps, gunfire, impacts). Gunfire pulls the street.
 - **Squad bots**: follow in formation, mirror your stance, hold fire on unaware infected, defend when hunted, reload when calm; Maya heals, Miller hits hard, Iris senses infected on the radio band, Reed scavenges extra loot.

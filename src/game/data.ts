@@ -1,5 +1,5 @@
-import type { Appearance, WeaponArt } from '../render/art/characters';
-import type { Gait, WeaponHold } from './rig';
+export type WeaponHold = 'pistol' | 'long' | 'melee';
+export type Gait = 'shamble' | 'sprint' | 'brute';
 
 // ---------------------------------------------------------------- items
 export type ItemId = 'ammo_pistol' | 'ammo_shells' | 'ammo_rifle' | 'medkit' | 'bandage' | 'food' | 'water' | 'scrap' | 'cloth' | 'battery';
@@ -19,17 +19,17 @@ export const ITEMS: Record<ItemId, { name: string; icon: string; max: number }> 
 // ---------------------------------------------------------------- weapons
 export type WeaponId = 'pistol' | 'shotgun' | 'rifle' | 'pipe';
 export interface WeaponDef {
-  name: string; art: WeaponArt; hold: WeaponHold;
+  name: string; hold: WeaponHold;
   damage: number; pellets: number; spread: number; range: number;
   cooldown: number; mag: number; reload: number; ammo: ItemId | null;
   noise: number; knockback: number; shake: number;
   sound: 'gunshot' | 'shotgun' | 'rifle' | 'melee';
 }
 export const WEAPONS: Record<WeaponId, WeaponDef> = {
-  pistol: { name: '9mm Pistol', art: 'pistol', hold: 'pistol', damage: 34, pellets: 1, spread: 0.02, range: 22, cooldown: 0.3, mag: 12, reload: 1.3, ammo: 'ammo_pistol', noise: 24, knockback: 2.5, shake: 0.06, sound: 'gunshot' },
-  shotgun: { name: 'Pump Shotgun', art: 'shotgun', hold: 'long', damage: 17, pellets: 7, spread: 0.12, range: 10, cooldown: 0.95, mag: 6, reload: 2.4, ammo: 'ammo_shells', noise: 34, knockback: 6, shake: 0.16, sound: 'shotgun' },
-  rifle: { name: 'Hunting Rifle', art: 'rifle', hold: 'long', damage: 95, pellets: 1, spread: 0.004, range: 34, cooldown: 1.15, mag: 5, reload: 2.2, ammo: 'ammo_rifle', noise: 30, knockback: 8, shake: 0.12, sound: 'rifle' },
-  pipe: { name: 'Steel Pipe', art: 'pipe', hold: 'melee', damage: 32, pellets: 1, spread: 0, range: 1.3, cooldown: 0.6, mag: 0, reload: 0, ammo: null, noise: 3, knockback: 5, shake: 0.05, sound: 'melee' },
+  pistol: { name: '9mm Pistol', hold: 'pistol', damage: 34, pellets: 1, spread: 0.02, range: 22, cooldown: 0.3, mag: 12, reload: 1.3, ammo: 'ammo_pistol', noise: 24, knockback: 2.5, shake: 0.06, sound: 'gunshot' },
+  shotgun: { name: 'Pump Shotgun', hold: 'long', damage: 17, pellets: 7, spread: 0.12, range: 10, cooldown: 0.95, mag: 6, reload: 2.4, ammo: 'ammo_shells', noise: 34, knockback: 6, shake: 0.16, sound: 'shotgun' },
+  rifle: { name: 'Hunting Rifle', hold: 'long', damage: 95, pellets: 1, spread: 0.004, range: 34, cooldown: 1.15, mag: 5, reload: 2.2, ammo: 'ammo_rifle', noise: 30, knockback: 8, shake: 0.12, sound: 'rifle' },
+  pipe: { name: 'Steel Pipe', hold: 'melee', damage: 32, pellets: 1, spread: 0, range: 1.3, cooldown: 0.6, mag: 0, reload: 0, ammo: null, noise: 3, knockback: 5, shake: 0.05, sound: 'melee' },
 };
 export const MELEE_SWING_TIME = 0.42;
 
@@ -38,7 +38,7 @@ export type Role = 'scavenger' | 'medic' | 'mechanic' | 'signalist';
 export interface SurvivorDef {
   id: string; name: string; role: Role; roleLabel: string; bio: string;
   maxHp: number; walk: number; run: number; weapon: WeaponId; melee: WeaponId;
-  resistant: boolean; appearance: Appearance; trait: string;
+  resistant: boolean; trait: string;
 }
 
 export const SURVIVORS: SurvivorDef[] = [
@@ -46,25 +46,21 @@ export const SURVIVORS: SurvivorDef[] = [
     id: 'reed', name: 'Reed', role: 'scavenger', roleLabel: 'Scavenger', resistant: true,
     bio: 'Former delivery driver. Knows every back road in the district. Has never been sick a day since the outbreak — and has never told anyone why.',
     trait: 'Finds extra supplies when searching.', maxHp: 100, walk: 1.75, run: 4.4, weapon: 'pistol', melee: 'pipe',
-    appearance: { seed: 11, skin: '#c08a68', hair: '#1e1612', hairStyle: 'messy', beard: 'full', headwear: 'none', top: '#4f5a2e', topStyle: 'jacket', shirt: '#6a6f72', pants: '#3a4148', boots: '#4a3322', gloves: '#2a2a28', backpack: '#5a4a32' },
   },
   {
     id: 'maya', name: 'Maya', role: 'medic', roleLabel: 'Medic', resistant: false,
     bio: 'Second-year nursing student when the hospitals fell. Keeps a notebook of every patient she could not save.',
     trait: 'Heals wounded teammates with medkits.', maxHp: 85, walk: 1.75, run: 4.5, weapon: 'pistol', melee: 'pipe',
-    appearance: { seed: 23, skin: '#a8725a', hair: '#2a1a14', hairStyle: 'ponytail', beard: 'none', headwear: 'none', top: '#5a4038', topStyle: 'hoodie', shirt: '#b8b0a0', pants: '#2e3a46', boots: '#3a2a1e', backpack: '#7a2e2a', scarf: '#8a2f2a' },
   },
   {
     id: 'miller', name: 'Miller', role: 'mechanic', roleLabel: 'Mechanic', resistant: false,
     bio: 'Ran a garage for thirty years. Talks to engines more kindly than to people. Carries a shotgun he calls "the negotiator".',
     trait: 'Shotgun specialist; heavy melee knockback.', maxHp: 120, walk: 1.6, run: 3.9, weapon: 'shotgun', melee: 'pipe',
-    appearance: { seed: 37, skin: '#d29a7a', hair: '#9a948a', hairStyle: 'buzz', beard: 'full', headwear: 'cap', top: '#6b6440', topStyle: 'vest', shirt: '#4a5058', pants: '#5a5238', boots: '#3a2a1a', gloves: '#5a4a32', backpack: '#4a4a3a' },
   },
   {
     id: 'iris', name: 'Iris', role: 'signalist', roleLabel: 'Signalist', resistant: true,
     bio: 'Ham-radio kid who first caught the repeating transmission. She is convinced someone is waiting on the other end.',
     trait: 'Senses nearby infected on the radio band; long-range rifle.', maxHp: 80, walk: 1.8, run: 4.6, weapon: 'rifle', melee: 'pipe',
-    appearance: { seed: 41, skin: '#e0b090', hair: '#121214', hairStyle: 'long', beard: 'none', headwear: 'headphones', top: '#2e3a4a', topStyle: 'jacket', shirt: '#8a8a7a', pants: '#3a3a40', boots: '#2a2622', backpack: '#3d4a3a' },
   },
 ];
 

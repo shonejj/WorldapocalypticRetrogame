@@ -1,7 +1,9 @@
-import type { BuildingSpec, VehicleKind } from '../../render/art/environment';
 import type { InfectedType, ItemId } from '../data';
 
 export type Loot = Partial<Record<ItemId, number>>;
+
+/** A kit piece placed in the level. x = world position of the piece's left edge (m). */
+export interface Placement { piece: string; x: number; y?: number; flip?: boolean; depth?: 'street' | 'curb' | 'fg' }
 
 export interface LevelDef {
   id: string;
@@ -10,11 +12,10 @@ export interface LevelDef {
   width: number;                 // metres of walkable street
   spawnX: number;
   seed: number;
-  buildings: (Omit<BuildingSpec, 'seed' | 'wPx' | 'hPx'> & { x: number; w: number; h: number })[];
-  rearBuildings: { x: number; w: number; h: number }[];
-  curbVehicles: { x: number; kind: VehicleKind; flip?: boolean }[];
-  props: { x: number; kind: 'barrel' | 'crate' | 'cone' | 'barrier' | 'dumpster'; dynamic: boolean }[];
-  decor: { x: number; kind: 'lamp' | 'pole' | 'fence' | 'billboard' | 'bush' | 'tree' | 'relay'; text?: string; lit?: boolean; flicker?: boolean }[];
+  street: Placement[];           // building fronts (slight parallax)
+  curb: Placement[];             // vehicles / barriers directly behind the walk line
+  foreground: Placement[];       // big silhouettes in front of the camera
+  props: { x: number; kind: 'barrel' | 'crates' | 'cone'; }[];
   caches: { id: string; x: number; label: string; loot: Loot; time: number; noise?: number }[];
   pickups: { id: string; x: number; item: ItemId; qty: number }[];
   infected: { id: string; x: number; type: InfectedType; state: 'idle' | 'dormant' | 'wander'; facing?: 1 | -1 }[];
