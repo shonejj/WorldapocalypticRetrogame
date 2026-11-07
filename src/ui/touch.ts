@@ -20,7 +20,7 @@ export class TouchControls {
     const zone = h('div.stickzone'), base = h('div.stick'), knob = h('div.knob'); base.append(knob);
     let id = -1, ox = 0, oy = 0, flicked = false;
     const home = () => { base.style.left = ''; base.style.top = ''; base.classList.remove('live'); knob.style.transform = ''; };
-    const release = () => { id = -1; input.touchMoveX = 0; input.touchHeld.delete('run'); home(); };
+    const release = () => { id = -1; input.touchMoveX = 0; input.touchMoveY = 0; input.touchHeld.delete('run'); home(); };
     zone.addEventListener('pointerdown', (e) => {
       e.preventDefault(); if (id !== -1) return;
       id = e.pointerId; zone.setPointerCapture(id); ox = e.clientX; oy = e.clientY; flicked = false;
@@ -33,6 +33,11 @@ export class TouchControls {
       knob.style.transform = `translate(${dx * R}px, ${dy * R}px)`;
       const ax = Math.abs(dx) < DEAD ? 0 : Math.sign(dx) * Math.min(1, (Math.abs(dx) - DEAD) / (1 - DEAD));
       input.touchMoveX = ax;
+      if (input.planar) {                       // inside buildings: free movement on both axes, no flick gestures
+        input.touchMoveY = Math.abs(dy) < DEAD ? 0 : dy;
+        if (Math.hypot(dx, dy) > RUN_AT) input.touchHeld.add('run'); else input.touchHeld.delete('run');
+        return;
+      }
       if (Math.abs(dx) > RUN_AT) input.touchHeld.add('run'); else input.touchHeld.delete('run');
       if (!flicked && Math.abs(dy) > 0.85 && Math.abs(dx) < 0.45) { flicked = true; input.tap(dy > 0 ? 'crouch' : 'interact'); }
       if (Math.abs(dy) < 0.4) flicked = false;

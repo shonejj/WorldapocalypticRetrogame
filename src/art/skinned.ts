@@ -300,7 +300,7 @@ export class SkinnedView {
     const moving = i.speed > 0.15, inf = i.gait !== 'survivor';
     const walkRate = (sp: number) => Math.max(0.35, sp / 1.45);
     // ---- lower body: locomotion
-    const L = this.look, tempo = L.tempo ?? 1, task = i.task === 'search' ? 'Fixing_Kneeling' : i.task === 'interact' ? 'Interact' : null;
+    const L = this.look, tempo = L.tempo ?? 1, task = i.task === 'search' ? 'Fixing_Kneeling' : i.task === 'pick' ? 'PickUp_Table' : i.task === 'open' || i.task === 'interact' ? 'Interact' : null;
     if (i.dormant) this.play('Death01', 'lower', 0.3, 1, true);
     else if (task) this.play(task, 'lower', 0.25);
     else if (i.heal > 0) this.play('Fixing_Kneeling', 'lower');

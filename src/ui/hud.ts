@@ -76,6 +76,7 @@ export class Hud {
     if (performance.now() > this.hintUntil) this.hintEl.classList.add('hidden');
     if (document.querySelector('.screen')) return;                // never behind the intro, menus or dialogue choices
     this.hint('move', t ? 'Drag the left stick to walk — push it to the edge to run.' : `${k('left')}/${k('right')} to walk, hold ${k('run')} to run. The mouse sets where you face.`);
+    if (g.inside) { this.hint('inside', t ? 'Inside: the stick moves you anywhere. Search what glints; the green sign is the way out.' : 'Inside: WASD moves you anywhere. Search what glints; the green sign is the way out.'); return; }
     if (g.time < 4) return;
     const near = g.infected.filter((z) => z.alive && Math.abs(z.x - L.x) < 10);
     const unaware = near.find((z) => z.state !== 'chase' && z.state !== 'dormant' && Math.sign(z.x - L.x) === z.facing && Math.abs(z.x - L.x) < 2.2);

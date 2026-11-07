@@ -69,7 +69,7 @@ export interface AnimIn {
   recoil: number; melee: number; reload: number; heal: number; hurt: number; attack: number; throwT: number;
   dormant: boolean; drawn: boolean;
   /** contextual task the actor is doing (skinned bodies pick a matching clip) */
-  task?: 'search' | 'interact' | null;
+  task?: 'search' | 'interact' | 'pick' | 'open' | null;
   /** screamer: seconds left of the current scream */
   scream?: number;
 }

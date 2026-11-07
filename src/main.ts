@@ -41,6 +41,7 @@ class App {
   offline = !!navigator.serviceWorker?.controller;
   private fps = h('div.fps.hidden'); private fpsAcc = 0; private fpsN = 0;
   private perf = { t: 0, n: 0, done: false };
+  private carry: Set<string> | null = null;
 
   constructor() {
     document.title = GAME.title;
@@ -202,11 +203,13 @@ class App {
       else if (f.pressed.has('inventory')) this.inventory(false);
       else {
         const n = this.clock.advance(dt, now);
+        if (this.carry) { for (const a of this.carry) (f.pressed as Set<string>).add(a); this.carry = null; }
+        if (n === 0 && f.pressed.size) this.carry = f.pressed;      // no sim step this frame: keep taps for the next one
         for (let i = 0; i < n; i++) g.tick(STEP, i === 0 ? f : null);
       }
       this.stepDialogue(now);
     } else this.input.frame(now);            // drain buffered presses while menus are open
-    if (g) { g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
+    if (g) { this.input.planar = !!g.inside; g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
     audio.update();
     this.r.grade.uniforms.uHurt.value = g ? Math.max(0, 1 - g.leader.hp / g.leader.maxHp - 0.45) * 0.9 : 0;
     this.r.render(now / 1000);
