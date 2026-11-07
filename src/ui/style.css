@@ -97,25 +97,33 @@ button[disabled] { opacity: 0.38; cursor: default; }
 .choicebox { display: flex; flex-direction: column; gap: 8px; min-width: min(520px, 90vw); } .choicebox button { text-align: left; padding: 11px 16px; border-left: 3px solid var(--accent); background: rgba(8,13,18,.9); }
 .endtext { max-width: 620px; text-align: center; color: var(--dim); line-height: 1.5; margin: 0 0 20px; }
 
-/* ---------- touch */
+/* ---------- touch: left floating stick, right thumb arc (no HUD overlap) */
 .touch { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
-.touch button { position: absolute; pointer-events: auto; border-radius: 50%; background: rgba(14, 26, 34, .5); border: 1px solid rgba(170,210,225,.3); font-family: var(--mono); font-size: 11px; padding: 0; touch-action: none; }
-.touch button.on { background: rgba(90,180,200,.5); }
-.touch .left { left: calc(18px + var(--sl)); bottom: calc(20px + var(--sb)); width: 70px; height: 70px; font-size: 22px; }
-.touch .right { left: calc(98px + var(--sl)); bottom: calc(20px + var(--sb)); width: 70px; height: 70px; font-size: 22px; }
-.touch .run { left: calc(178px + var(--sl)); bottom: calc(26px + var(--sb)); width: 50px; height: 50px; }
-.touch .crouch { left: calc(178px + var(--sl)); bottom: calc(86px + var(--sb)); width: 50px; height: 50px; font-size: 9px; }
-.touch .fire { right: calc(18px + var(--sr)); bottom: calc(20px + var(--sb)); width: 84px; height: 84px; font-size: 13px; }
-.touch .melee { right: calc(112px + var(--sr)); bottom: calc(18px + var(--sb)); width: 58px; height: 58px; }
-.touch .use { right: calc(28px + var(--sr)); bottom: calc(114px + var(--sb)); width: 60px; height: 60px; }
-.touch .reload { right: calc(112px + var(--sr)); bottom: calc(86px + var(--sb)); width: 46px; height: 46px; }
-.touch .heal { right: calc(176px + var(--sr)); bottom: calc(24px + var(--sb)); width: 46px; height: 46px; }
-.touch .throw { right: calc(176px + var(--sr)); bottom: calc(80px + var(--sb)); width: 46px; height: 46px; }
-.touch .swap { right: calc(100px + var(--sr)); bottom: calc(146px + var(--sb)); width: 46px; height: 46px; font-size: 9px; }
-body.touch-on .weapon { left: auto; right: calc(var(--pad) + var(--sr)); bottom: auto; top: calc(166px + var(--st)); min-width: 0; transform: scale(.85); transform-origin: top right; }
-body.touch-on .toasts { bottom: auto; top: calc(240px + var(--st)); }
-body.touch-on .prompt { bottom: calc(176px + var(--sb)); } body.touch-on .subtitle { bottom: calc(210px + var(--sb)); } body.touch-on .signal { bottom: auto; top: calc(66px + var(--st)); }
-
+.touch .stickzone { position: absolute; left: 0; top: 30%; bottom: 0; width: 46%; pointer-events: auto; touch-action: none; }
+.touch .stick { position: absolute; left: calc(96px + var(--sl)); top: calc(100% - 100px - var(--sb)); width: 116px; height: 116px; margin: -58px 0 0 -58px; border-radius: 50%; border: 2px solid rgba(170,210,225,.28); background: rgba(10,20,28,.3); opacity: .55; pointer-events: none; }
+.touch .stick.live { opacity: 1; }
+.touch .knob { position: absolute; left: 33px; top: 33px; width: 50px; height: 50px; border-radius: 50%; background: rgba(150,200,215,.45); border: 1px solid rgba(220,240,250,.6); }
+.touch button { position: absolute; pointer-events: auto; border-radius: 50%; background: rgba(14, 26, 34, .55); border: 1px solid rgba(170,210,225,.32); font-family: var(--mono); font-size: 11px; padding: 0; touch-action: none; color: #dfeaee; }
+.touch button.on { background: rgba(90,180,200,.55); }
+.touch .crouch { left: calc(20px + var(--sl)); bottom: calc(190px + var(--sb)); width: 56px; height: 40px; border-radius: 20px; font-size: 10px; }
+.touch .crouch.lit { background: rgba(90,180,200,.5); border-color: var(--accent); }
+.touch .cluster { position: absolute; right: calc(14px + var(--sr)); bottom: calc(14px + var(--sb)); width: 250px; height: 220px; pointer-events: none; }
+.touch .fire { right: 8px; bottom: 8px; width: 92px; height: 92px; font-size: 14px; font-weight: 700; background: rgba(120,40,30,.5); border-color: rgba(240,150,130,.5); }
+.touch .melee { right: 112px; bottom: 6px; width: 62px; height: 62px; }
+.touch .use { right: 18px; bottom: 112px; width: 62px; height: 62px; }
+.touch .use.ready { background: rgba(90,209,230,.45); border-color: var(--accent); box-shadow: 0 0 14px rgba(90,209,230,.6); }
+.touch .reload { right: 96px; bottom: 82px; width: 50px; height: 50px; }
+.touch .throw { right: 186px; bottom: 10px; width: 48px; height: 48px; }
+.touch .heal { right: 160px; bottom: 70px; width: 46px; height: 46px; }
+.touch .swap { right: 92px; bottom: 150px; width: 46px; height: 46px; font-size: 10px; }
+body.touch-on .member { pointer-events: auto; }
+body.touch-on .weapon { left: 50%; bottom: calc(8px + var(--sb)); transform: translateX(-50%) scale(.82); transform-origin: bottom center; min-width: 0; }
+body.touch-on .signal { bottom: auto; top: calc(58px + var(--st)); }
+body.touch-on .subtitle { bottom: calc(118px + var(--sb)); }
+body.touch-on .prompt { bottom: calc(160px + var(--sb)); }
+body.touch-on .toasts { bottom: auto; top: calc(130px + var(--st)); }
+body.touch-on .topbtns { top: calc(var(--pad) + var(--st)); right: calc(var(--pad) + var(--sr) + 0px); }
+body.touch-on .objectives { top: calc(56px + var(--st)); }
 @media (max-width: 1180px) { .stealth { top: calc(96px + var(--st)); } }
 @media (max-width: 820px), (max-height: 500px) {
   :root { --pad: 8px; --fs: 11px; }

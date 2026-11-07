@@ -184,7 +184,7 @@ class App {
       }
       this.stepDialogue(now);
     } else this.input.frame(now);            // drain buffered presses while menus are open
-    if (g) { g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); }
+    if (g) { g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
     audio.update();
     this.r.grade.uniforms.uHurt.value = g ? Math.max(0, 1 - g.leader.hp / g.leader.maxHp - 0.45) * 0.9 : 0;
     this.r.render(now / 1000);
