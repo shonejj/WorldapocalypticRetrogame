@@ -4,11 +4,11 @@ import type { LevelDef } from './levels/types';
 import type { LightSpot } from '../art/kit';
 import { building, relay } from '../art/buildings';
 import { ground, streetLamp, powerLine, chainFence, billboard, overpass, skyline, sky, Z } from '../art/street';
-import { backdrop } from '../art/backdrop';
+import { backdrop, foreground } from '../art/backdrop';
 import { FACADE_Z } from '../art/buildings';
 import { prop, type Prop } from '../art/props';
 import { vehicle } from '../art/vehicles';
-import { tree, bush, grass } from '../art/nature';
+import { tree, grass } from '../art/nature';
 import { CAT, type Tag } from '../physics/world';
 import { Rng, hashString } from '../core/math';
 import { M, box, cyl, Batch } from '../art/kit';
@@ -33,7 +33,7 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
   for (const x of L.trees) { const t = tree(Math.round(x * 7), R.range(1.0, 1.3)); t.position.set(x, 0, FACADE_Z - R.range(1.5, 4)); g.add(t); }
   for (const v of L.vehicles) { const m = vehicle(v.kind, hashString(`v${v.x}`)); m.group.position.set(v.x, -0.0, v.z ?? -2.75); m.group.rotation.y = (v.flip ? Math.PI : 0) + R.range(-0.04, 0.04); g.add(m.group); }
   // dark foreground overgrowth along the near road edge: frames the bottom of the screen (reference composition)
-  for (let x = L.x0 - 10; x < L.x1 + 10; x += R.range(4, 9)) { const b = bush(Math.round(x * 3), R.range(0.55, 0.95), true); b.position.set(x, -0.35, R.range(6.5, 8.2)); g.add(b); }
+  g.add(foreground(L.x0, L.x1, L.seed));
   g.add(grass([[L.x0 - 20, L.x1 + 20, FACADE_Z, FACADE_Z + 0.6, 0], [L.x0 - 20, L.x1 + 20, 1.0, 1.9, -0.12], [L.x0 - 20, L.x1 + 20, 6, 8.5, -0.16], [L.x0 - 20, L.x1 + 20, -11, FACADE_Z - 0.2, 0]], 0.9, L.seed));
 
   // workbench in front of the garage

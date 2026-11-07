@@ -39,7 +39,7 @@ const GradeShader = {
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(36, 16 / 9, 0.5, 900);
+  readonly camera = new THREE.PerspectiveCamera(43, 16 / 9, 0.3, 900);
   private composer!: EffectComposer;
   private bloom!: UnrealBloomPass;
   readonly grade = new ShaderPass(GradeShader);
@@ -47,8 +47,12 @@ export class Renderer {
   /** Camera target and additive shake offset (camera-systems: shake rides on top of follow). */
   focus = new THREE.Vector3(0, 1.9, 0);
   shakeOffset = new THREE.Vector3();
-  /** Close, low camera (art direction: characters ≈ ¼ of screen height, slight upward look). */
-  distance = 12.5;
+  /** Close, low, fairly wide camera: characters ≈ ¼ of screen height and strong parallax between
+   *  the foreground, the lane, the facades and the far city (2.5D). zoom/lift/swing are eased by
+   *  the game per level beat (camera "moments") and by movement (the camera trails, so it yaws). */
+  readonly baseDistance = 10;
+  zoom = 1; lift = 0; swing = 0;
+  get distance(): number { return this.baseDistance * this.zoom; }
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -115,7 +119,7 @@ export class Renderer {
     this.canvas.classList.toggle('pixelated', this.quality.pixel !== 0);
     this.camera.aspect = w / h;
     // keep enough horizontal coverage on tall/narrow screens (tablets, portrait phones)
-    this.camera.fov = w / h < 1.4 ? 46 : w / h < 1.7 ? 40 : 36;
+    this.camera.fov = w / h < 1.4 ? 54 : w / h < 1.7 ? 48 : 43;
     this.camera.updateProjectionMatrix();
   }
 
@@ -124,8 +128,8 @@ export class Renderer {
 
   render(time: number): void {
     const f = this.focus, s = this.shakeOffset;
-    this.camera.position.set(f.x + s.x, f.y - 0.45 + s.y, this.distance);
-    this.camera.lookAt(f.x + s.x * 0.5, f.y + s.y * 0.5, 0);
+    this.camera.position.set(f.x + s.x - this.swing, f.y - 0.45 + this.lift + s.y, this.distance);
+    this.camera.lookAt(f.x + s.x * 0.5, f.y + this.lift * 0.35 + s.y * 0.5, 0);
     this.camera.rotation.z += s.z;
     this.grade.uniforms.uTime.value = time % 100;
     this.composer.render();

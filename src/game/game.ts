@@ -436,6 +436,11 @@ export class Game implements Host, AIWorld {
     const L = this.leader;
     this.cam.update(dt, L.x, L.facing, L.vx, this.r.halfWidth, this.x0, this.x1, this.time);
     this.r.focus.set(this.cam.x, 2.0, 0);
+    // camera moments per beat + trailing yaw while moving (2.5D parallax)
+    const k = 1 - Math.exp(-1.6 * dt), cm = this.beat?.cam;
+    this.r.zoom += ((cm?.zoom ?? 1) - this.r.zoom) * k;
+    this.r.lift += ((cm?.lift ?? 0) - this.r.lift) * k;
+    this.r.swing += (L.vx * 0.5 - this.r.swing) * (1 - Math.exp(-2.2 * dt));
     this.r.shakeOffset.set(this.cam.offset.x, this.cam.offset.y, this.cam.offset.roll);
     audio.listenerX = this.cam.x;
     this.lights.update(this.cam.x, this.time);

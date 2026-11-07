@@ -33,7 +33,11 @@ export function wetMaterial(base: THREE.MeshStandardMaterial, amount: number): T
         vec2 rp = vWetPos.xz * 5.0;
         vec2 rip = (vec2(wn(rp + uTime * 3.1), wn(rp * 1.3 - uTime * 2.7 + 17.0)) - 0.5) * 0.014;
         vec4 rc = uReflMat * vec4(vWetPos, 1.0);
-        vec3 refl = texture2D(uRefl, rc.xy / rc.w + rip).rgb;
+        vec2 ruv = rc.xy / rc.w + rip;
+        // fade out where the mirror image has no data (behind / outside the reflection camera),
+        // and cap HDR so a lamp in a puddle can't bloom into a flare
+        float edge = rc.w > 0.0 ? smoothstep(0.0, 0.08, ruv.x) * smoothstep(1.0, 0.92, ruv.x) * smoothstep(0.0, 0.1, ruv.y) * smoothstep(1.0, 0.9, ruv.y) : 0.0;
+        vec3 refl = min(texture2D(uRefl, clamp(ruv, 0.001, 0.999)).rgb, vec3(0.6)) * edge * 0.85;
         vec3 V = normalize(cameraPosition - vWetPos);
         float fr = 0.35 + 0.65 * pow(1.0 - max(V.y, 0.0), 3.0);
         outgoingLight = mix(outgoingLight, outgoingLight * 0.45 + refl * fr, wetP * uOn);

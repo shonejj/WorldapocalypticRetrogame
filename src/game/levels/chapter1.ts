@@ -76,10 +76,10 @@ export const CHAPTER1: LevelDef = {
     { id: 'alley', x0: -16, x1: 10, type: 'teach', intensity: 0.1, ink: 'intro', title: 'Behind the store' },
     { id: 'street', x0: 10, x1: 24, type: 'teach', intensity: 0.3, ink: 'first_infected' },
     { id: 'pharmacy', x0: 24, x1: 40, type: 'tension', intensity: 0.45, ink: 'pharmacy' },
-    { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'garage' },
-    { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass' },
+    { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'garage', cam: { zoom: 0.9 } },
+    { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass', cam: { zoom: 1.1, lift: -0.45 } },
     { id: 'breather', x0: 96, x1: 116, type: 'rest', intensity: 0.2, ink: 'breather' },
-    { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'relay_approach', title: WORLD_NAMES.relayName },
+    { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'relay_approach', title: WORLD_NAMES.relayName, cam: { zoom: 1.2, lift: 0.7 } },
   ],
   objectives: [
     { id: 'o_supplies', text: 'Scavenge supplies on Market Street' },

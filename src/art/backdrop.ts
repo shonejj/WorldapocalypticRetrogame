@@ -101,3 +101,29 @@ function cloudBank(x0: number, x1: number): THREE.Group {
   }
   return g;
 }
+
+/**
+ * Near foreground (z ≈ 6.8–8.3, 2–3 m from the lens): dark silhouettes that sweep past fastest —
+ * the strongest parallax cue. Sparse, at the screen edges (bottom plants, top cables, a few posts)
+ * so they frame the action without hiding it.
+ */
+export function foreground(x0: number, x1: number, seed = 31): THREE.Group {
+  const R = new Rng(seed), B = new Batch(), sil = M.silhouette(0x07090b), leaf = M.leaves(true, 10);
+  for (let x = x0 - 10; x < x1 + 10; x += R.range(5, 12)) {         // plant clumps rising from the bottom edge
+    const z = R.range(6.8, 7.8), n = R.int(3, 6);
+    for (let k = 0; k < n; k++) {
+      const g = new THREE.PlaneGeometry(R.range(0.7, 1.4), R.range(0.9, 1.6)); g.rotateY(R.range(-0.6, 0.6)); g.rotateZ(R.range(-0.25, 0.25));
+      g.translate(x + R.range(-0.8, 0.8), R.range(0.0, 0.35), z + R.range(-0.2, 0.2)); B.add(leaf, g);
+    }
+  }
+  for (let x = x0 + R.range(4, 10); x < x1 + 10; x += R.range(22, 34)) {   // posts / broken sign poles
+    B.add(sil, box(0.12, 6, 0.12, x, 2.5, 8.2, { rotZ: R.range(-0.05, 0.05) }));
+    if (R.chance(0.5)) B.add(sil, box(0.7, 0.45, 0.04, x + 0.2, R.range(1.9, 2.6), 8.15, { rotZ: R.range(-0.3, 0.3) }));
+  }
+  for (let x = x0 - 10; x < x1 + 10; x += 18) {                         // sagging cables across the top
+    const pts: THREE.Vector3[] = []; const sag = R.range(0.25, 0.5);
+    for (let k = 0; k <= 10; k++) { const t = k / 10; pts.push(new THREE.Vector3(x + t * 18, 2.75 - Math.sin(t * Math.PI) * sag, 8)); }
+    B.add(sil, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 16, 0.012, 4));
+  }
+  return B.build({ castShadow: false, receiveShadow: false });
+}
