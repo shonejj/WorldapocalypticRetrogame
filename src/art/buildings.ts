@@ -4,7 +4,7 @@ import { Batch, M, box, cyl, plane, type LightSpot } from './kit';
 import * as TX from './textures';
 
 /** Street layout constants (metres). Gameplay plane is z = 0; facades stand behind it. */
-export const FACADE_Z = -6.5;
+export const FACADE_Z = -4.2;
 
 export interface BuildingSpec {
   x: number; w: number; floors: number;
@@ -144,15 +144,27 @@ export function building(s: BuildingSpec): Built {
     B.add(dark, box(1.4, 2.4, 0.2, cx, 1.2, zf + 0.02));
   }
 
-  // ---- overgrowth: ivy curtains from the top, weeds at the base
-  const ivyN = Math.ceil(s.w / 3);
+  // ---- weathering: rain-water stains under the cornice and every floor ledge
+  for (let x = x0; x < x1 - 0.5; x += 2.2) {
+    B.add(M.grime(1 + (Math.floor(x) & 3)), plane(2.2, Math.min(H, 4.5), x + 1.1, H - Math.min(H, 4.5) / 2 - 0.1, zf + 0.015));
+    if (s.floors > 1 && R.chance(0.6)) B.add(M.grime(2 + (Math.floor(x) & 1)), plane(2.2, 2.2, x + 1.1, ground + 3.1 - 1.2, zf + 0.016));
+  }
+  // ---- street-level clutter: torn posters / flyers on the ground floor, an electrical box
+  for (let i = 0; i < Math.ceil(s.w / 4); i++) {
+    const px = R.range(x0 + 0.5, x1 - 0.5), pw = R.range(0.5, 0.85);
+    if (doorX !== undefined && Math.abs(px - doorX) < 1.1) continue;
+    B.add(M.poster(R.int(0, 8)), plane(pw, pw * 1.3, px, R.range(1.2, 2.2), zf + 0.03 + i * 0.002));
+  }
+  if (R.chance(0.5)) B.add(M.metal('#56605a'), box(0.55, 0.75, 0.22, x1 - 0.8, 1.5, zf + 0.12));
+  // ---- overgrowth: thick ivy curtains draping from the roof line (reference silhouette), weeds at the base
+  const ivyN = Math.ceil(s.w / 2.6);
   for (let i = 0; i < ivyN; i++) {
-    const ix = R.range(x0 + 0.3, x1 - 0.3), len = R.range(2, H * 0.7), iw = R.range(0.6, 1.5);
-    B.add(M.leaves(false, 9 + (i % 3)), plane(iw, len, ix, H - len / 2 + 0.2, zf + 0.06 + i * 0.002));
+    const ix = R.range(x0 + 0.3, x1 - 0.3), len = R.range(2.5, H * 0.75), iw = R.range(1.0, 2.2);
+    B.add(M.ivy(1 + (i % 4)), plane(iw, len, ix, H - len / 2 + 0.25, zf + 0.07 + i * 0.002));
   }
   for (let i = 0; i < ivyN; i++) {
-    const ix = R.range(x0 + 0.3, x1 - 0.3), len = R.range(1, 3.5);
-    B.add(M.leaves(false, 11 + (i % 2)), plane(R.range(0.8, 1.8), len, ix, len / 2, zf + 0.08 + i * 0.002));
+    const ix = R.range(x0 + 0.3, x1 - 0.3), len = R.range(0.8, 2.6);
+    B.add(M.leaves(false, 11 + (i % 2)), plane(R.range(0.8, 1.8), len, ix, len / 2, zf + 0.09 + i * 0.002));
   }
 
   const group = B.build();
@@ -163,7 +175,7 @@ export function building(s: BuildingSpec): Built {
 /** Relay 7: radio shack with a lattice mast, dish and blinking beacon. */
 export function relay(x: number, seed = 7): Built {
   const B = new Batch(), lights: LightSpot[] = [], R = new Rng(seed);
-  const zf = FACADE_Z + 2.2, conc = M.concrete('#6a6858', 5), metal = M.metal('#7a8488'), dark = M.dark();
+  const zf = FACADE_Z + 0.6, conc = M.concrete('#6a6858', 5), metal = M.metal('#7a8488'), dark = M.dark();
   B.add(conc, box(5.5, 3.2, 4, x + 2.75, 1.6, zf - 2, { tile: 2 }));
   B.add(M.metal('#4d5a5c'), box(6, 0.15, 4.6, x + 2.75, 3.3, zf - 2, { rotZ: 0.04 }));
   B.add(dark, box(1.1, 2.3, 0.1, x + 1.2, 1.15, zf + 0.02));

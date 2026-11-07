@@ -2,7 +2,7 @@ import { animate, createTimer } from 'animejs';
 import { h } from './dom';
 import { ITEMS, WEAPONS, type ItemId } from '../game/data';
 import type { Game } from '../game/game';
-import type { Input } from '../core/input';
+import type { Action, Input } from '../core/input';
 import { audio } from '../core/audio';
 
 /**
@@ -31,7 +31,7 @@ export class Hud {
       const el = h('div.member', { title: `${s.name} — ${s.survivor!.roleLabel}` },
         h('div.top', {}, h('b', {}, s.name.toUpperCase()), h('span.key', {}, String(i + 1)), tag, bleed),
         h('div.role', {}, s.survivor!.roleLabel), h('div.bar.hpbar', {}, hp), h('div.needs', {}, h('div.bar.hunger', { title: 'Hunger' }, hunger), h('div.bar.thirst', { title: 'Thirst' }, thirst)));
-      squad.append(el); this.members.push({ el, hp, hunger, thirst, tag, bleed });
+      el.addEventListener('pointerdown', () => input.tap(`slot${i + 1}` as Action)); squad.append(el); this.members.push({ el, hp, hunger, thirst, tag, bleed });
       const t = h('div.ntag', {}, h('b', {}, s.name.toUpperCase()), h('span', {}, s.survivor!.roleLabel)); this.tags.push(t);
     });
     const obj = h('div.objectives', {}, h('div.loc', {}, g.level.location), h('div.chapter', {}, g.level.name), this.objList);

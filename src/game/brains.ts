@@ -31,7 +31,10 @@ export class PlayerBrain implements Brain {
     it.moveX = f.moveX; it.run = f.held.has('run'); it.crouch = this.crouch;
     it.fire = f.held.has('fire'); it.aim = f.held.has('fire');
     it.melee = f.pressed.has('melee'); it.reload = f.pressed.has('reload'); it.heal = f.pressed.has('heal');
-    if (f.pressed.has('throw')) it.throwAt = a.x + a.facing * 9;
+    // PC: the mouse picks the facing while shooting/striking or standing still (aim behind you while backing off)
+    if (f.aimX !== undefined && (it.fire || it.melee || f.moveX === 0) && Math.abs(f.aimX - a.x) > 0.35) it.faceX = Math.sign(f.aimX - a.x);
+    if (f.aimDir) it.faceX = f.aimDir;
+    if (f.pressed.has('throw')) it.throwAt = f.aimX !== undefined && Math.abs(f.aimX - a.x) > 2 ? Math.max(a.x - 12, Math.min(a.x + 12, f.aimX)) : a.x + a.facing * 9;
     return it;
   }
 }

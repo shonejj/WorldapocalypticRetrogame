@@ -1,34 +1,28 @@
 import * as THREE from 'three';
 import { Rng } from '../core/math';
-import { Batch, M, box, cyl, glowSprite, lightCone, plane, worldUV, type LightSpot } from './kit';
+import { Batch, M, box, cyl, glowSprite, lightCone, plane, type LightSpot } from './kit';
 import { FACADE_Z } from './buildings';
+import { wetMaterial } from '../render/wet';
 
 /** Depth bands (z, metres). Characters walk on the lane at z = 0. */
 export const Z = {
-  facade: FACADE_Z, backWalk: [-6.5, -4.6] as const, road: [-4.6, -1.0] as const, lane: [-1.0, 1.3] as const,
-  gutter: [1.3, 2.5] as const, front: [2.5, 7] as const, lamps: -5.6,
+  facade: FACADE_Z, lot: [-12, FACADE_Z] as const, walk: [FACADE_Z, 1.25] as const, gutter: [1.25, 1.9] as const,
+  road: [1.9, 16] as const, lamps: FACADE_Z + 0.55, poles: FACADE_Z + 0.35,
 };
 
-/** Long ground strips spanning the level. */
+/** Long ground strips spanning the level: lots → sidewalk (the lane) → gutter → wet road in the foreground. */
 export function ground(x0: number, x1: number): THREE.Group {
   const B = new Batch(), w = x1 - x0, cx = (x0 + x1) / 2;
+  const walk = wetMaterial(M.paving(), 0.45), road = wetMaterial(M.asphalt(), 1), gut = wetMaterial(M.asphalt(), 1.4);
   const strip = (z0: number, z1: number, top: number, mat: THREE.Material, tile = 2.5) =>
     B.add(mat, box(w, 0.6, z1 - z0, cx, top - 0.3, (z0 + z1) / 2, { tile }));
-  strip(Z.backWalk[0] - 8, Z.backWalk[1], 0.0, M.paving(), 2);
-  strip(Z.road[0], Z.road[1], -0.14, M.asphalt(), 4);
-  strip(Z.lane[0], Z.lane[1], 0.0, M.paving(), 2);
-  strip(Z.gutter[0], Z.gutter[1], -0.16, M.asphalt(), 3);
-  strip(Z.front[0], Z.front[1] + 6, -0.22, M.concrete('#3e423e', 4), 3);
-  // curbs
+  strip(Z.lot[0], Z.lot[1], -0.01, M.concrete('#3a3d36', 6), 3);
+  strip(Z.walk[0], Z.walk[1], 0.0, walk, 2);
+  strip(Z.gutter[0], Z.gutter[1], -0.16, gut, 3);
+  strip(Z.road[0], Z.road[1], -0.14, road, 4);
   const curb = M.concrete('#7b7d78', 2);
-  for (const z of [Z.backWalk[1], Z.road[1], Z.gutter[0]]) B.add(curb, box(w, 0.2, 0.18, cx, -0.04, z, { tile: 1.5 }));
-  const g = B.build({ castShadow: false });
-  // standing water in the gutter: near-mirror physical surface catching every light
-  const water = new THREE.Mesh(worldUV(new THREE.PlaneGeometry(w, Z.gutter[1] - Z.gutter[0] - 0.1).rotateX(-Math.PI / 2).translate(cx, -0.13, (Z.gutter[0] + Z.gutter[1]) / 2), 3),
-    new THREE.MeshPhysicalMaterial({ color: 0x0a1218, roughness: 0.04, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.02, envMapIntensity: 0.9, transparent: true, opacity: 0.85 }));
-  water.receiveShadow = true; water.name = 'water';
-  g.add(water);
-  return g;
+  B.add(curb, box(w, 0.2, 0.2, cx, -0.04, Z.walk[1], { tile: 1.5 }));
+  return B.build({ castShadow: false });
 }
 
 export function streetLamp(x: number, z = Z.lamps, lit = true, flicker = false): { group: THREE.Group; light?: LightSpot } {
@@ -39,13 +33,13 @@ export function streetLamp(x: number, z = Z.lamps, lit = true, flicker = false):
   B.add(lit ? M.emissive(0xffd9a0, 6) : M.dark(), box(0.55, 0.03, 0.26, x + 1.5, 5.97, z));
   const g = B.build();
   if (!lit) return { group: g };
-  const cone = lightCone(6, 2.4, 0xffc887, 0.045); cone.position.set(x + 1.5, 5.95, z); g.add(cone);
+  const cone = lightCone(5.8, 2.2, 0xffc887, 0.022); cone.position.set(x + 1.5, 5.95, z); g.add(cone);
   const glow = glowSprite(1.6, 0xffd9a0, 0.85); glow.position.set(x + 1.5, 5.9, z + 0.1); g.add(glow);
   cone.name = 'cone'; glow.name = 'glow';
   return { group: g, light: { x: x + 1.5, y: 5.6, z: z + 0.6, color: 0xffbf7a, intensity: 26, distance: 15, flicker, cone: true } };
 }
 
-export function powerLine(xs: number[], z = -6.1, seed = 3): THREE.Group {
+export function powerLine(xs: number[], z = Z.poles, seed = 3): THREE.Group {
   const B = new Batch(), wood = M.wood('#3d2c1f'), dark = M.dark(), R = new Rng(seed);
   for (const x of xs) {
     B.add(wood, cyl(0.12, 0.15, 9, x, 4.5, z, 8, { tile: 2 }), box(2.2, 0.14, 0.14, x, 8.4, z));
@@ -132,7 +126,7 @@ export function sky(): THREE.Group {
   const g = new THREE.Group();
   const mat = new THREE.ShaderMaterial({
     side: THREE.BackSide, depthWrite: false, fog: false,
-    uniforms: { top: { value: new THREE.Color(0x04070c) }, mid: { value: new THREE.Color(0x0f1e2b) }, low: { value: new THREE.Color(0x2a3e4c) }, flash: { value: 0 } },
+    uniforms: { top: { value: new THREE.Color(0x0d161d) }, mid: { value: new THREE.Color(0x1f303c) }, low: { value: new THREE.Color(0x3a4f5e) }, flash: { value: 0 } },
     vertexShader: 'varying vec3 vp; void main(){ vp = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader: `uniform vec3 top; uniform vec3 mid; uniform vec3 low; uniform float flash; varying vec3 vp;
       void main(){ float h = vp.y; vec3 c = h > 0.15 ? mix(mid, top, smoothstep(0.15, 0.7, h)) : mix(low, mid, smoothstep(-0.05, 0.15, h));
@@ -140,7 +134,5 @@ export function sky(): THREE.Group {
   });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(400, 24, 16), mat); dome.name = 'sky';
   g.add(dome);
-  const moon = glowSprite(26, 0xdfe8ee, 0.8); moon.position.set(60, 120, -330); g.add(moon);
-  const core = new THREE.Mesh(new THREE.CircleGeometry(6, 32), new THREE.MeshBasicMaterial({ color: 0xe8eef0, fog: false })); core.position.set(60, 120, -331); g.add(core);
-  return g;
+    return g;
 }

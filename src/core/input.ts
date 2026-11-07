@@ -58,7 +58,8 @@ export function radialDeadzone(x: number, y: number, dead = 0.22): [number, numb
 }
 
 /** One tick's worth of action state handed to the simulation. */
-export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number }
+/** aimX: world x under the mouse (PC aiming); aimDir: right-stick facing (gamepad). */
+export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number; aimX?: number; aimDir?: number }
 
 const BUFFER_MS = 130;
 
@@ -75,6 +76,9 @@ export class Input {
   touchMoveX = 0;
   private capture: ((b: Binding) => void) | null = null;
   onDevice: ((d: Device) => void) | null = null;
+  /** Mouse position in CSS px (PC aiming); converted to world x by `toWorldX` (set by the app). */
+  private ptr: { x: number; y: number } | null = null;
+  toWorldX: ((cx: number, cy: number) => number) | null = null;
 
   constructor(target: HTMLElement) {
     this.bindings = readPrefs<Bindings>('bindings', structuredClone(DEFAULT_BINDINGS));
@@ -91,6 +95,8 @@ export class Input {
       this.mouse.add(e.button); this.setDevice('keyboard');
     });
     addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') this.mouse.delete(e.button); });
+    addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') this.ptr = { x: e.clientX, y: e.clientY }; });
+    document.addEventListener('mouseleave', () => { this.ptr = null; });
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('blur', () => { this.keys.clear(); this.mouse.clear(); this.touchHeld.clear(); this.touchMoveX = 0; });
     addEventListener('touchstart', () => this.setDevice('touch'), { passive: true });
@@ -153,7 +159,11 @@ export class Input {
     const stick = this.pad.axes[0] ?? 0;
     if (Math.abs(stick) > 0.05) moveX = stick;
     if (this.touchMoveX) moveX = this.touchMoveX;
-    return { held, pressed, moveX };
+    const out: InputFrame = { held, pressed, moveX };
+    if (this.device === 'keyboard' && this.ptr && this.toWorldX) out.aimX = this.toWorldX(this.ptr.x, this.ptr.y);
+    const rx = this.pad.axes[2] ?? 0;
+    if (this.device === 'gamepad' && Math.abs(rx) > 0.5) out.aimDir = Math.sign(rx);
+    return out;
   }
 
   // ---------------------------------------------------------------- rebinding
