@@ -14,6 +14,7 @@ import storyJson from './story/chapter1.ink';
 import { ScreenStack } from './ui/screens';
 import { Hud } from './ui/hud';
 import { TouchControls } from './ui/touch';
+import { loadCharacterAsset } from './art/skinned';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
 import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, choiceScreen, endScreen, footText } from './ui/menus';
 import { h } from './ui/dom';
@@ -89,7 +90,8 @@ class App {
     audio.unlock();
     this.screens.clear(); this.teardown();
     const loading = h('div.loading', {}, h('div', {}, 'TUNING IN…'), h('div.bar', {}, h('i'))); document.body.append(loading);
-    requestAnimationFrame(() => setTimeout(() => {
+    loadCharacterAsset(`${import.meta.env.BASE_URL}models/survivor.glb`).catch((e) => console.warn('[characters] falling back to built-in rig', e))
+      .then(() => setTimeout(() => {
       try {
         const g = (this.game = new Game(this.r, CHAPTER1, save, QUALITY_PRESETS[this.settings.quality].shadows));
         this.dialogue = new Dialogue(storyJson); this.dialogue.load(save?.ink ?? null);
