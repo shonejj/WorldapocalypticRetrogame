@@ -27,9 +27,10 @@ Planned: hostile humans (cover, flanking, weapons), special infected (biological
 | System | v0.1 | Next |
 |---|---|---|
 | Side-scrolling 2.5D, 13 parallax depth bands, fog, rain, lamp light | ✅ | weather presets, time of day |
-| Procedural pixel art for world, props, characters | ✅ | more building/prop kinds; optional hand-drawn skins |
-| Cut-out rigs + procedural animation | ✅ | climbing, vaulting, doors, stairs |
-| Planck ragdolls on death, physics props | ✅ | dismemberment, explosive barrels |
+| Painted world kit-bashed from layer art, real 2D lighting, reflections, bloom | ✅ | new locations (needs new layer sets) |
+| Reed: real painted animation (idle/walk/run/draw/aim/aim-walk) | ✅ | crouch, melee, reload, hurt, death animations |
+| Maya/Miller/Iris + infected | placeholder recolours of Reed | dedicated painted animations (see ASSET_PIPELINE.md) |
+| Ragdolls cut from the sprite art, physics props | ✅ | dismemberment, explosive barrels |
 | Stealth: sight + sound, dormant infected, takedowns | ✅ | distractions (throwables), hiding spots |
 | Squad bots (follow/hold, engage, reload, medic heals) | ✅ | commands per survivor, revive downed |
 | Shared stash, caches, pickups, ammo per weapon | ✅ | weight/slots, crafting, durability, food/water drain |

@@ -10,8 +10,8 @@ import { CHAPTER1 } from './game/levels/chapter1';
 import { Hud } from './ui/hud';
 import { Screens, footText } from './ui/screens';
 import { TouchControls } from './ui/touch';
-import { buildSkin, portraitDataURL } from './render/art/characters';
 import { SURVIVORS } from './game/data';
+import { loadAssets, type Assets, type CharId } from './render/assets';
 import { registerServiceWorker } from './sw-register';
 
 document.title = GAME.title;
@@ -24,7 +24,7 @@ const touch = new TouchControls(input);
 let game: Game | null = null;
 let hud: Hud | null = null;
 let offline = !!navigator.serviceWorker?.controller;
-let titlePortraits: string[] | null = null;
+let assets: Assets | null = null;
 type Mode = 'title' | 'play' | 'pause' | 'menu' | 'end';
 let mode: Mode = 'title';
 
@@ -34,6 +34,8 @@ function applySettings(): void {
   audio.volumes = { master: settings.masterVolume, sfx: settings.sfxVolume, ambience: settings.ambienceVolume };
   audio.applyVolumes(); audio.setRain(settings.rain);
   renderer.setRenderScale(settings.renderScale);
+  renderer.setQuality(settings.quality);
+  hud?.setNameTags(settings.nameTags);
   if (game) { game.rain.enabled = settings.rain; game.shakeEnabled = settings.screenShake; }
   hud?.setFpsVisible(settings.showFps);
   updateTouch();
@@ -48,14 +50,14 @@ const hasSave = () => store.get<SaveData | { level: '' }>('save', { level: '' })
 
 function showTitle(): void {
   mode = 'title'; updateTouch();
-  titlePortraits ??= SURVIVORS.map((s) => portraitDataURL(buildSkin(s.appearance)));
+  const portraits = SURVIVORS.map((s) => assets!.chars[s.id as CharId].portraitUrl);
   screens.title({
     hasSave: hasSave(), offline,
     onContinue: () => start(store.get<SaveData>('save', null as unknown as SaveData)),
     onNew: () => { store.remove('save'); start(null); },
     onSettings: () => screens.settings(settings, applySettings, showTitle),
     onControls: () => screens.controls(showTitle),
-    onSquad: () => screens.squad(titlePortraits!, null, showTitle),
+    onSquad: () => screens.squad(portraits, null, showTitle),
   });
 }
 
@@ -70,9 +72,9 @@ function start(save: SaveData | null): void {
   screens.close();
   teardown();
   const loader = screens.loading();
-  loader.set(0.15, 'PAINTING THE WORLD…');
+  loader.set(0.3, 'BUILDING THE STREET…');
   requestAnimationFrame(() => setTimeout(() => {
-    game = new Game(renderer, CHAPTER1, save);
+    game = new Game(renderer, CHAPTER1, save, assets!);
     if (import.meta.env.DEV) (window as unknown as { __game: Game }).__game = game;   // test/debug hook (dev only)
     loader.set(0.9, 'WAKING THE SQUAD…');
     hud = new Hud(game, pause, inventory);
@@ -110,6 +112,19 @@ addEventListener('keydown', () => audio.unlock());
 
 // ------------------------------------------------------------------ main loop
 let last = performance.now(), fpsAcc = 0, fpsN = 0;
+// adaptive quality: sample the first seconds of play and step down on slow devices
+const perf = { t: 0, n: 0, done: false };
+function adaptQuality(dt: number): void {
+  if (perf.done || mode !== 'play') return;
+  perf.t += dt; perf.n++;
+  if (perf.t < 4) return;
+  perf.done = true;
+  const fps = perf.n / perf.t;
+  if (fps < 35 && settings.quality === 'high') {
+    settings.quality = 'low'; if (fps < 22) settings.renderScale = 0.75;
+    applySettings(); hud?.toast(`Graphics lowered for smoother play (${fps.toFixed(0)} FPS) — change in Settings`, 'info');
+  }
+}
 function frame(now: number): void {
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
   const cmd = input.poll();
@@ -121,15 +136,21 @@ function frame(now: number): void {
   } else if ((mode === 'pause' || mode === 'menu') && cmd.pause) resume();
   else if (game && mode === 'end') game.update(dt, emptyCommand());
   if (input.usingTouch && settings.touchControls === 'auto' && mode === 'play' && touch.root.classList.contains('hidden')) updateTouch();
-  renderer.render();
+  adaptQuality(dt);
+  renderer.render(now / 1000);
   fpsAcc += dt; fpsN++;
   if (fpsAcc > 0.5) { hud?.setFps(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
   requestAnimationFrame(frame);
 }
 
 applySettings();
-showTitle();
 requestAnimationFrame(frame);
+{
+  const loader = screens.loading();
+  loadAssets((p) => loader.set(p, 'TUNING IN…'))
+    .then((a) => { assets = a; loader.done(); showTitle(); })
+    .catch((err) => { console.error(err); loader.set(1, 'FAILED TO LOAD ASSETS — RELOAD'); });
+}
 registerServiceWorker((ready) => {
   offline = ready;
   const f = document.getElementById('netfoot');

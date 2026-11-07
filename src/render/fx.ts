@@ -1,6 +1,5 @@
 import * as THREE from 'three';
-import { paintGlow } from './art/environment';
-import { hex } from './painter';
+import { glowTexture } from './textures';
 
 const MAX = 1400;
 interface P { x: number; y: number; vx: number; vy: number; life: number; max: number; size: number; r: number; g: number; b: number; grav: number; stick: boolean; z: number }
@@ -30,7 +29,7 @@ export class Fx {
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0; this.mesh.frustumCulled = false; this.mesh.position.z = 0.6;
     parent.add(this.mesh);
-    this.flashTex = paintGlow(64, hex('#ffd890'), 1.6).texture();
+    this.flashTex = glowTexture('#ffd890', 1.6);
     for (let i = 0; i < 10; i++) {
       const f = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial({ map: this.flashTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
       f.visible = false; f.position.z = 0.7; parent.add(f); this.flashes.push({ mesh: f, t: 0, max: 1 });

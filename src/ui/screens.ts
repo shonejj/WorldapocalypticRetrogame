@@ -19,9 +19,12 @@ function menu(items: Btn[]): HTMLElement {
 export class Screens {
   private current: HTMLElement | null = null;
   private waveTimer: { revert(): unknown } | null = null;
+  private bgAnim: { revert(): unknown } | null = null;
 
   show(el: HTMLElement): void {
+    const keepBg = this.bgAnim; this.bgAnim = null;
     this.close();
+    this.bgAnim = keepBg;
     this.current = el;
     document.body.append(el);
     animate(el, { opacity: [0, 1], duration: 300, ease: 'outQuad' });
@@ -29,7 +32,7 @@ export class Screens {
     if (btns.length) animate(btns, { opacity: [0, 1], y: [8, 0], delay: stagger(50, { start: 150 }), duration: 280, ease: 'outQuad' });
     (el.querySelector('.menu button:not([disabled])') as HTMLButtonElement | null)?.focus({ preventScroll: true });
   }
-  close(): void { this.waveTimer?.revert(); this.waveTimer = null; this.current?.remove(); this.current = null; }
+  close(): void { this.waveTimer?.revert(); this.waveTimer = null; this.bgAnim?.revert(); this.bgAnim = null; this.current?.remove(); this.current = null; }
   get open(): boolean { return !!this.current; }
 
   loading(): { set(p: number, label?: string): void; done(): void } {
@@ -49,7 +52,18 @@ export class Screens {
         ['Continue', opts.onContinue, !opts.hasSave], ['New expedition', opts.onNew], ['The squad', opts.onSquad],
         ['Settings', opts.onSettings], ['Controls', opts.onControls],
       ]),
-      h('div.foot#netfoot', {}, footText(opts.offline)));
+      h('div#netfoot.foot', {}, footText(opts.offline)));
+    // painted street as a slowly drifting backdrop
+    const L = (n: string) => `url(${import.meta.env.BASE_URL}assets/layers/${n}.webp)`;
+    el.style.backgroundImage = ['linear-gradient(rgba(3,7,10,.55), rgba(3,7,10,.82))', L('07_vegetation'), L('05_abandoned_vehicles_props'), L('06_playable_ground'), L('04_main_street_storefronts'), L('03_mid_distance_structures'), L('02_distant_city_architecture'), L('01_distant_skyline')].join(',');
+    el.style.backgroundSize = 'cover, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%';
+    el.style.backgroundPosition = 'center, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%';
+    const pan = { x: 0 };
+    this.bgAnim?.revert();
+    this.bgAnim = animate(pan, { x: 1, duration: 60000, loop: true, alternate: true, ease: 'inOutSine', onUpdate: () => {
+      const f = [0, 0.9, 0.75, 0.7, 0.6, 0.35, 0.15, 0.05];
+      el.style.backgroundPositionX = f.map((k, i) => (i === 0 ? 'center' : `${-pan.x * k * 900}px`)).join(',');
+    } });
     this.show(el);
     animate(titleEl, { opacity: [0, 1], letterSpacing: ['0.4em', '0.06em'], duration: 1600, ease: 'outExpo' });
     // radio waveform (procedural) — locks onto the "signal" every few seconds
@@ -97,6 +111,9 @@ export class Screens {
       range('Master volume', 'masterVolume', 0, 1, 0.05), range('Effects', 'sfxVolume', 0, 1, 0.05), range('Ambience (rain, wind)', 'ambienceVolume', 0, 1, 0.05),
       range('Render scale', 'renderScale', 0.5, 1, 0.25), check('Rain', 'rain'), check('Screen shake', 'screenShake'), check('Show FPS', 'showFps'),
       h('div.row', {}, h('span', {}, 'Touch controls'), touchSel),
+      h('div.row', {}, h('span', {}, 'Graphics quality (bloom)'), h('select', { onchange: (e: Event) => { s.quality = (e.target as HTMLSelectElement).value as Settings['quality']; onChange(s); } },
+        ...(['high', 'low'] as const).map((v) => h('option', { value: v, selected: s.quality === v }, v.toUpperCase())))),
+      check('Squad name tags', 'nameTags'),
       h('div', { style: 'margin-top:14px' }, menu([['Back', onBack]])))));
   }
 

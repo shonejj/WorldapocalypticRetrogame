@@ -15,6 +15,8 @@ export class Hud {
   private radio = h('div.radio'); private toasts = h('div.toasts'); private hurtEl = h('div.hurt');
   private fps = h('div.fps.hidden');
   private radioTimer: { revert(): unknown } | null = null;
+  private tags: HTMLElement[] = [];
+  private tagsOn = true;
   private lastKey = '';
 
   constructor(private game: Game, onPause: () => void, onInventory: () => void) {
@@ -36,11 +38,17 @@ export class Hud {
     const top = h('div.toprow', {},
       h('button.iconbtn', { onclick: onInventory, title: 'Inventory (I)', ariaLabel: 'Inventory' }, '▤'),
       h('button.iconbtn', { onclick: onPause, title: 'Pause (Esc)', ariaLabel: 'Pause' }, 'II'));
-    this.root.append(squad, obj, stealth, weapon, this.signal, this.prompt, this.radio, this.toasts, this.fps, top);
+    const tagLayer = h('div.tags');
+    game.survivors.forEach((s, i) => {
+      const t = h('div.tag', {}, h('img', { src: game.portraits[i], alt: '' }), h('div', {}, h('b', {}, s.name.toUpperCase()), h('span', {}, s.survivor!.roleLabel)));
+      this.tags.push(t); tagLayer.append(t);
+    });
+    this.root.append(tagLayer, squad, obj, stealth, weapon, this.signal, this.prompt, this.radio, this.toasts, this.fps, top);
     document.body.append(this.hurtEl, this.root);
     game.listeners.push((e) => this.onEvent(e));
   }
 
+  setNameTags(v: boolean): void { this.tagsOn = v; }
   setFpsVisible(v: boolean): void { this.fps.classList.toggle('hidden', !v); }
   setFps(f: number): void { this.fps.textContent = `${f.toFixed(0)} FPS`; }
 
@@ -80,6 +88,15 @@ export class Hud {
 
   update(): void {
     const g = this.game, L = g.leader;
+    g.survivors.forEach((s, i) => {
+      const t = this.tags[i];
+      const show = this.tagsOn && s.alive && !g.ended;
+      t.style.display = show ? '' : 'none';
+      if (!show) return;
+      const p = g.tagAnchor(s);
+      t.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-30%, -100%)`;
+      t.classList.toggle('me', i === g.controlled);
+    });
     g.survivors.forEach((s, i) => {
       const m = this.members[i];
       m.el.classList.toggle('active', i === g.controlled);

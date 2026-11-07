@@ -1,179 +1,185 @@
 import * as THREE from 'three';
 import { animate, utils } from 'animejs';
-import type { LevelDef } from '../game/levels/types';
-import { PPU, hex, mix, PAL } from './painter';
-import {
-  paintBillboard, paintBuilding, paintBush, paintCanopy, paintClouds, paintCone2, paintFence,
-  paintGlow, paintGround, paintIndustrial, paintOverpass, paintPowerPole, paintRelay, paintSky, paintSkyline, paintStreetLamp,
-  paintTree, paintVehicle,
-} from './art/environment';
-import { spriteFrom, VIEW_HEIGHT, type Renderer } from './renderer';
-import { hashSeed } from '../core/rng';
+import type { LevelDef, Placement } from '../game/levels/types';
+import { KIT, PX_PER_M, TILED, type KitLight, type LayerFile } from '../game/levels/kit';
+import { LIGHTS, litMaterial, type Light } from './lighting';
+import { glowTexture, mistTexture, streakTexture } from './textures';
+import { VIEW_HEIGHT, CAMERA_Y, type Renderer } from './renderer';
+import type { Assets } from './assets';
+
+const DEPTH = { street: { f: 0.9, z: -12 }, curb: { f: 1, z: -3 }, fg: { f: 1.22, z: 12 } } as const;
 
 interface Layer { group: THREE.Group; factor: number }
+interface MovingLight { light: Light; baseX: number; factor: number; glow?: THREE.Mesh; streak?: THREE.Mesh }
 
-/** Depth bands: parallax factor (1 = moves with gameplay) and z (fog distance). */
-export const LAYERS = {
-  sky: { z: -500, f: 0 }, clouds: { z: -470, f: 0.02 }, skylineFar: { z: -420, f: 0.07 }, skylineNear: { z: -340, f: 0.14 },
-  industrial: { z: -260, f: 0.24 }, overpass: { z: -170, f: 0.38 }, rear: { z: -95, f: 0.62 },
-  street: { z: -8, f: 1 }, curb: { z: -3, f: 1 }, gameplay: { z: 0, f: 1 }, ground: { z: 1, f: 1 },
-  fg: { z: 9, f: 1.12 }, fgFar: { z: 18, f: 1.32 },
-} as const;
-
-export interface Lamp { x: number; on: boolean; intensity: number; flicker: boolean }
-
+/**
+ * Painted 2.5D world: the source layer art is kit-bashed into a long street and
+ * spread across depth bands with parallax. Lights from the art (lamps, shop
+ * windows) become real scene lights for characters, props and the wet street.
+ */
 export class WorldView {
-  readonly layers = new Map<keyof typeof LAYERS, Layer>();
-  readonly lamps: Lamp[] = [];
-  private clouds: THREE.Mesh[] = [];
+  private layers: Layer[] = [];
+  readonly lights: MovingLight[] = [];
   private animations: { revert(): unknown }[] = [];
-  private sky: THREE.Mesh;
+  private mists: THREE.Mesh[] = [];
+  private sky: THREE.Mesh[] = [];
+  private nextLightning = 14;
+  private geos: THREE.BufferGeometry[] = [];
+  private mats: THREE.Material[] = [];
+  onLightning: (() => void) | null = null;
 
-  constructor(r: Renderer, readonly level: LevelDef) {
-    for (const [k, v] of Object.entries(LAYERS)) {
-      const g = new THREE.Group(); g.position.z = v.z;
-      if (k === 'sky') r.rig.add(g); else r.scene.add(g);
-      this.layers.set(k as keyof typeof LAYERS, { group: g, factor: v.f });
-    }
-    const L = (k: keyof typeof LAYERS) => this.layers.get(k)!.group;
-    const seed = level.seed, W = level.width;
-    const viewW = VIEW_HEIGHT * 2.4;                         // generous: ultra-wide screens
-    const span = (f: number) => W * f + viewW * 1.4;          // layer content width needed
-
-    // ---- sky (follows camera)
-    const sky = paintSky(512, 300, seed);
-    this.sky = spriteFrom(sky, { ppu: 300 / (VIEW_HEIGHT * 1.6), anchorY: 0.5, fog: false }, { w: VIEW_HEIGHT * 4, h: VIEW_HEIGHT * 1.6 });
-    this.sky.position.y = 0.6; L('sky').add(this.sky);
-    for (let i = 0; i < 3; i++) {
-      const c = spriteFrom(paintClouds(900, 120, seed + i, i === 2), { ppu: 40, anchorY: 0.5, fog: false, alphaTest: 0.05, opacity: 0.55 });
-      c.position.set(i * 22 - 10, 3.6 + i * 0.5, 0); L('clouds').add(c); this.clouds.push(c);
-    }
-    // ---- distant city
-    const skyline = (key: 'skylineFar' | 'skylineNear', tone: string, lit: number, hM: number, ppu: number, y: number) => {
-      const w = span(LAYERS[key].f) + 20, segs = Math.ceil(w / 40);
-      for (let i = 0; i < segs; i++) {
-        const m = spriteFrom(paintSkyline(40 * ppu, hM * ppu, seed + i * 13 + key.length, hex(tone), lit), { ppu, anchorX: 0, anchorY: 0 });
-        m.position.set(-viewW + i * 40, y, 0); L(key).add(m);
+  constructor(private r: Renderer, readonly level: LevelDef, private assets: Assets) {
+    const viewW = VIEW_HEIGHT * 2.6;
+    // ---- tiled bands (sky, city, mid, ground, vegetation, extreme foreground)
+    for (const t of TILED) {
+      const g = this.layer(t.factor, t.z);
+      const size = assets.layerSize[t.layer], rect = t.rect ?? [0, 0, size.w, size.h], sc = t.scale ?? 1;
+      const w = ((rect[2] - rect[0]) * sc) / PX_PER_M;
+      const from = -viewW, to = level.width * t.factor + viewW * 1.2;
+      let i = 0;
+      for (let x = from; x < to; x += w, i++) {
+        const m = this.quad(t.layer, rect, t.ground, sc, !!t.lit, i % 2 === 1, t.dim ?? 1);
+        m.position.set(x, t.y ?? 0, 0); g.add(m);
+        if (t.layer === '01_distant_skyline') this.sky.push(m);
       }
+    }
+    // ---- kit placements
+    const place = (p: Placement, depth: keyof typeof DEPTH) => {
+      const k = KIT[p.piece], d = DEPTH[depth];
+      const g = this.layerFor(d.f, d.z);
+      const s = k.scale ?? 1;
+      const m = this.quad(k.layer, k.rect, k.ground, s, true, !!p.flip, depth === 'fg' ? 0.32 : 1);
+      const w = ((k.rect[2] - k.rect[0]) * s) / PX_PER_M;
+      m.position.set(p.x * d.f, p.y ?? 0, 0);
+      g.add(m);
+      for (const L of k.lights ?? []) this.addLight(L, p, k.rect, s, w, d.f, g);
     };
-    skyline('skylineFar', '#132433', 0.03, 9, PPU.far / 2, 0.4);
-    skyline('skylineNear', '#162b3a', 0.05, 8, PPU.far / 2, 0.2);
-    { const w = span(LAYERS.industrial.f) + 20; for (let x = -viewW; x < w; x += 30) { const m = spriteFrom(paintIndustrial(30 * PPU.far / 2, 6 * PPU.far / 2, seed + x), { ppu: PPU.far / 2, anchorX: 0, anchorY: 0 }); m.position.set(x, 0, 0); L('industrial').add(m); } }
-    { const w = span(LAYERS.overpass.f) + 20; for (let x = -viewW; x < w; x += 36) { const m = spriteFrom(paintOverpass(36 * PPU.far, 7 * PPU.far, seed + x * 3), { ppu: PPU.far, anchorX: 0, anchorY: 0 }); m.position.set(x, 0, 0); L('overpass').add(m);
-      for (let lx = x + 3; lx < x + 36; lx += 9) this.glow(L('overpass'), lx, 7 * 0.72 + 0.5, 1.6, '#ffcf7a', 0.5); } }
-    // rear street (darker silhouettes with a few lit windows)
-    for (const b of level.rearBuildings) {
-      const p = paintBuilding({ kind: b.x % 3 ? 'apartment' : 'ruin', wPx: b.w * PPU.far, hPx: b.h * PPU.far, seed: hashSeed(`rear${b.x}`), litWindows: 0.06 });
-      const m = spriteFrom(p, { ppu: PPU.far, anchorX: 0, anchorY: 0, tint: 0x8090a0 });
-      m.position.set(b.x * LAYERS.rear.f - 4, 0.2, 0); L('rear').add(m);
+    for (const p of level.street) place(p, 'street');
+    for (const p of level.curb) place(p, 'curb');
+    for (const p of level.foreground) place(p, p.depth === 'fg' ? 'fg' : 'curb');
+    // ---- drifting ground mist (behind and in front of the walk line)
+    for (const [z, y, op, h] of [[-6, 0.55, 0.16, 1.6], [2.2, -0.15, 0.1, 1.1]] as const) {
+      const mat = new THREE.MeshBasicMaterial({ map: mistTexture(), transparent: true, opacity: op, depthWrite: false, fog: false });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(VIEW_HEIGHT * 3.2, h), mat);
+      mesh.position.set(0, y - CAMERA_Y, z); r.rig.add(mesh); this.mists.push(mesh); this.mats.push(mat);   // rig space → ground level
     }
-    // ---- street buildings (f = 1 so doors line up with interactables)
-    for (const b of level.buildings) {
-      const p = paintBuilding({ ...b, wPx: b.w * PPU.mid, hPx: b.h * PPU.mid, seed: hashSeed(`${level.id}:${b.x}`) });
-      const m = spriteFrom(p, { ppu: PPU.mid, anchorX: 0, anchorY: 0 });
-      m.position.set(b.x, 0.25, 0); L('street').add(m);
-      if (b.kind === 'store' || b.kind === 'pharmacy') {                 // warm interior spill + sign lamps
-        this.glow(L('street'), b.x + b.w * 0.27, 1.4, 4.2, '#f2b060', 0.45);
-        this.glow(L('street'), b.x + 1.5, b.w > 0 ? 3.55 : 0, 1.4, '#ffd8a0', 0.5);
-        this.glow(L('street'), b.x + b.w - 1.5, 3.55, 1.4, '#ffd8a0', 0.5);
-      }
-    }
-    // gap fillers between buildings: dark alley + chain fence
-    // ---- curb vehicles
-    for (const v of level.curbVehicles) {
-      const m = spriteFrom(paintVehicle(v.kind, hashSeed(`v${v.x}`)), { ppu: PPU.near, anchorY: 0 });
-      m.position.set(v.x, 0.12, 0); if (v.flip) m.scale.x = -1; L('curb').add(m);
-    }
-    // ---- decor (lamps, poles, fences, vegetation, relay)
-    for (const d of level.decor) {
-      const s = hashSeed(`d${d.x}${d.kind}`);
-      if (d.kind === 'lamp') {
-        const m = spriteFrom(paintStreetLamp(s), { ppu: PPU.near, anchorX: 0.21, anchorY: 0 }); m.position.set(d.x, 0, -0.5); L('curb').add(m);
-        const lamp: Lamp = { x: d.x + 0.6, on: !!d.lit, intensity: d.lit ? 1 : 0, flicker: !!d.flicker };
-        this.lamps.push(lamp);
-        if (d.lit) {
-          const head = this.glow(L('curb'), d.x + 0.68, 5.1, 2.2, '#ffcf7a', 0.9, 0.5);
-          const cone = spriteFrom(paintCone2(96, 160, hex('#ffcf7a')), { ppu: 96 / 4.2, anchorY: 1, additive: true, opacity: 0.55 });
-          cone.position.set(d.x + 0.68, 5.1, 0.6); L('curb').add(cone);
-          const pool = this.glow(L('ground'), d.x + 0.68, 0.0, 4.5, '#ffcf7a', 0.5, 0.2); pool.scale.y = 0.28;
-          if (d.flicker) {
-            const mats = [head, cone, pool].map((o) => o.material as THREE.MeshBasicMaterial);
-            const base = mats.map((m) => m.opacity);
-            const state = { k: 1 };
-            const run = () => {
-              this.animations.push(animate(state, {
-                k: [{ to: 0.1, duration: 50 }, { to: 1, duration: 60 }, { to: 0.25, duration: 40 }, { to: 1, duration: 90 }],
-                delay: utils.random(800, 4200),
-                onUpdate: () => { mats.forEach((m, i) => { m.opacity = base[i] * state.k; }); lamp.intensity = state.k; },
-                onComplete: run,
-              }));
-            };
-            run();
-          }
-        }
-      } else if (d.kind === 'pole') {
-        const m = spriteFrom(paintPowerPole(s), { ppu: PPU.near, anchorY: 0 }); m.position.set(d.x, 0, -1); L('curb').add(m);
-      } else if (d.kind === 'fence') {
-        const m = spriteFrom(paintFence(s), { ppu: PPU.near, anchorY: 0 }); m.position.set(d.x, 0, -1.5); L('curb').add(m);
-      } else if (d.kind === 'billboard') {
-        const m = spriteFrom(paintBillboard(s, d.text ?? ''), { ppu: PPU.mid, anchorY: 0 }); m.position.set(d.x, 0.2, -0.5); L('street').add(m);
-      } else if (d.kind === 'bush') {
-        const m = spriteFrom(paintBush(s), { ppu: PPU.near, anchorY: 0 }); m.position.set(d.x, 0, -0.4); L('curb').add(m);
-      } else if (d.kind === 'tree') {
-        const m = spriteFrom(paintTree(s), { ppu: PPU.mid, anchorY: 0 }); m.position.set(d.x, 0.1, -2); L('street').add(m);
-      } else if (d.kind === 'relay') {
-        const m = spriteFrom(paintRelay(s), { ppu: PPU.near, anchorX: 0.35, anchorY: 0 }); m.position.set(d.x, 0, -1.2); L('curb').add(m);
-        const beacon = this.glow(L('curb'), d.x - 0.3 * 0 + (210 - 105) / PPU.near, 11.2, 1.2, '#ff3a2a', 1, 1.4);
-        this.animations.push(animate(beacon.material as THREE.MeshBasicMaterial, { opacity: [1, 0.1], duration: 900, loop: true, alternate: true, ease: 'inOutSine' }));
-      }
-    }
-    // ---- ground strip (tiled)
-    for (let x = -12; x < W + 12; x += 16) {
-      const g = spriteFrom(paintGround(16 * PPU.near, 1.6 * PPU.near, seed + x), { ppu: PPU.near, anchorX: 0, anchorY: 1 });
-      g.position.set(x, 0.16, 0); L('ground').add(g);
-    }
-    // ---- foreground vegetation + debris silhouettes (darkened)
-    const fgSpan = span(LAYERS.fg.f);
-    for (let x = -10, i = 0; x < fgSpan; x += 9 + ((i * 29) % 11), i++) {
-      const m = spriteFrom(paintBush(seed + i * 7, 180, 70, false), { ppu: PPU.near, anchorY: 0, tint: 0x6f7f72 });
-      m.position.set(x, -1.05, 0); L('fg').add(m);
-    }
-    const fgFarSpan = span(LAYERS.fgFar.f);
-    for (let x = -10, i = 0; x < fgFarSpan; x += 30 + ((i * 17) % 16), i++) {
-      if (i % 2 === 0) { const m = spriteFrom(paintCanopy(seed + i, 520, 130), { ppu: PPU.near * 0.75, anchorY: 1, tint: 0x4a5a52 }); m.position.set(x, 2.25 + VIEW_HEIGHT / 2 + 0.3, 0); L('fgFar').add(m); }
-      const b = spriteFrom(paintBush(seed + i * 3, 200, 80, true), { ppu: PPU.near * 0.8, anchorY: 0, tint: 0x45524c }); b.position.set(x + 12, -1.35, 0); L('fgFar').add(b);
+    // wet street below the painted ground strip: dark water that catches reflections
+    {
+      const c = document.createElement('canvas'); c.width = 4; c.height = 64;
+      const g2 = c.getContext('2d')!; const grd = g2.createLinearGradient(0, 0, 0, 64);
+      grd.addColorStop(0, '#16222c'); grd.addColorStop(0.4, '#0d161d'); grd.addColorStop(1, '#05090c');
+      g2.fillStyle = grd; g2.fillRect(0, 0, 4, 64);
+      const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+      const mat = litMaterial(tex, { lit: 0.6, alphaTest: 0 });
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(VIEW_HEIGHT * 3.4, 1.4), mat);
+      mesh.position.set(0, -0.28 - 0.7 - CAMERA_Y, -1.5); r.rig.add(mesh); this.mists.push(mesh); this.mats.push(mat);
     }
   }
 
-  /** Additive glow sprite. */
-  glow(parent: THREE.Object3D, x: number, y: number, size: number, color: string, opacity: number, z = 0.3): THREE.Mesh {
-    const key = color;
-    let tex = glowCache.get(key);
-    if (!tex) { tex = paintGlow(64, mix(hex(color), PAL.white, 0.1), 2.2).texture(); tex.magFilter = THREE.LinearFilter; tex.minFilter = THREE.LinearFilter; glowCache.set(key, tex); }
-    const m = spriteFrom(tex, { ppu: 1, anchorY: 0.5, additive: true, opacity }, { w: size, h: size });
-    m.position.set(x, y, z); parent.add(m);
-    return m;
+  private layer(factor: number, z: number): THREE.Group {
+    const g = new THREE.Group(); g.position.z = z; this.r.scene.add(g);
+    this.layers.push({ group: g, factor });
+    return g;
+  }
+  private layerFor(factor: number, z: number): THREE.Group {
+    return this.layers.find((l) => l.factor === factor && l.group.position.z === z)?.group ?? this.layer(factor, z);
   }
 
-  /** 0 (dark) … 1 (under a working lamp) at world x. */
-  lightAt(x: number): number {
-    let l = 0.15;
-    for (const lamp of this.lamps) if (lamp.on) l = Math.max(l, lamp.intensity * Math.max(0, 1 - Math.abs(lamp.x - x) / 3.4));
-    return l;
+  /** Quad showing a rectangle of a layer image; origin = left edge on the walk line. */
+  private quad(layer: LayerFile, rect: [number, number, number, number], ground: number, scale: number, lit: boolean, flip: boolean, dim: number): THREE.Mesh {
+    const tex = this.assets.layers[layer], { w: W, h: H } = this.assets.layerSize[layer];
+    const [x0, y0, x1, y1] = rect, k = scale / PX_PER_M;
+    const w = (x1 - x0) * k, top = (ground - y0) * k, bottom = -(y1 - ground) * k;
+    const g = new THREE.PlaneGeometry(w, top - bottom);
+    g.translate(w / 2, (top + bottom) / 2, 0);
+    const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+    const u0 = x0 / W, u1 = x1 / W, v0 = 1 - y1 / H, v1 = 1 - y0 / H;
+    for (let i = 0; i < uv.count; i++) {
+      const u = uv.getX(i), v = uv.getY(i);
+      uv.setXY(i, flip ? u1 - u * (u1 - u0) : u0 + u * (u1 - u0), v0 + v * (v1 - v0));
+    }
+    const mat = lit ? litMaterial(tex, { tint: new THREE.Color(dim, dim, dim).getHex(), alphaTest: 0.04 })
+      : new THREE.MeshBasicMaterial({ map: tex, transparent: true, alphaTest: 0.04, color: new THREE.Color(dim, dim, dim) });
+    this.geos.push(g); this.mats.push(mat);
+    return new THREE.Mesh(g, mat);
   }
 
-  update(dt: number, camX: number): void {
-    for (const layer of this.layers.values()) if (layer.factor !== 0) layer.group.position.x = camX * (1 - layer.factor);
-    this.clouds.forEach((c, i) => { c.position.x -= dt * (0.15 + i * 0.08); if (c.position.x < -30) c.position.x += 66; });
+  private addLight(L: KitLight, p: Placement, rect: number[], s: number, w: number, factor: number, g: THREE.Group): void {
+    const k = s / PX_PER_M;
+    const k0 = KIT[p.piece];
+    const lx = (p.flip ? w - L.x * k : L.x * k), ly = (k0.ground - (rect[1] + L.y)) * k;
+    const light: Light = { x: 0, y: ly, radius: L.radius, intensity: L.intensity, color: new THREE.Color(L.color) };
+    const ml: MovingLight = { light, baseX: p.x * factor + lx, factor };
+    if (L.glow) {
+      const mat = new THREE.MeshBasicMaterial({ map: glowTexture(L.color), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.85 });
+      ml.glow = new THREE.Mesh(new THREE.PlaneGeometry(L.glow, L.glow), mat);
+      ml.glow.position.set(p.x * factor + lx, ly, 0.5); g.add(ml.glow); this.mats.push(mat);
+    }
+    if (L.intensity > 0.75 && ly > 0.5) {         // reflection of the light on the wet street
+      const mat = new THREE.MeshBasicMaterial({ map: streakTexture(), transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, opacity: 0.55 });
+      ml.streak = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 1.1), mat);
+      ml.streak.geometry.translate(0, -0.55, 0);
+      ml.streak.position.set(0, -0.02, -1.1); this.r.scene.add(ml.streak); this.mats.push(mat);
+    }
+    if (L.flicker) {
+      const base = L.intensity, gm = ml.glow?.material as THREE.MeshBasicMaterial | undefined, state = { k: 1 };
+      const run = () => this.animations.push(animate(state, {
+        k: [{ to: 0.15, duration: 50 }, { to: 1, duration: 70 }, { to: 0.35, duration: 40 }, { to: 1, duration: 110 }],
+        delay: utils.random(900, 5200),
+        onUpdate: () => { light.intensity = base * state.k; if (gm) gm.opacity = 0.85 * state.k; },
+        onComplete: run,
+      }));
+      run();
+    }
+    if (L.intensity > 0) this.lights.push(ml);
+    else if (ml.glow) this.lights.push({ ...ml, light: { ...light, intensity: 0 } });
   }
+
+  /** 0 (dark) … 1 (under a light) — used by infected perception. */
+  lightAt(x: number, y = 1): number {
+    let l = 0.12;
+    for (const { light } of this.lights) {
+      if (light.intensity <= 0) continue;
+      const d = Math.hypot(light.x - x, (light.y - y) * 0.8) / light.radius;
+      if (d < 1) l = Math.max(l, light.intensity * (1 - d));
+    }
+    return Math.min(1, l);
+  }
+
+  update(dt: number, camX: number, time: number): void {
+    for (const l of this.layers) l.group.position.x = camX * (1 - l.factor);
+    for (const ml of this.lights) {
+      ml.light.x = ml.baseX + camX * (1 - ml.factor);
+      if (ml.streak) { ml.streak.position.x = ml.light.x; (ml.streak.material as THREE.MeshBasicMaterial).opacity = 0.5 * Math.min(1, ml.light.intensity); }
+    }
+    this.mists.forEach((m, i) => { if (i > 1) return; const map = (m.material as THREE.MeshBasicMaterial).map!; map.offset.x = (camX * (i ? 0.05 : 0.02) + time * (i ? 0.012 : 0.006)) % 1; });
+    LIGHTS.uTime.value = time;
+    // lightning: brief blue-white ambient flashes, thunder follows
+    this.nextLightning -= dt;
+    if (this.nextLightning <= 0) {
+      this.nextLightning = utils.random(18, 40);
+      const amb = LIGHTS.uAmbient.value, base = { r: amb.r, g: amb.g, b: amb.b }, k = { v: 0 };
+      this.animations.push(animate(k, {
+        v: [{ to: 1, duration: 60 }, { to: 0.2, duration: 90 }, { to: 0.8, duration: 50 }, { to: 0, duration: 600, ease: 'outQuad' }],
+        onUpdate: () => {
+          amb.setRGB(base.r + k.v * 0.9, base.g + k.v * 0.95, base.b + k.v * 1.05);
+          for (const s of this.sky) (s.material as THREE.MeshBasicMaterial).color.setScalar(0.9 + k.v * 1.2);
+        },
+      }));
+      this.onLightning?.();
+    }
+  }
+
+  allLights(): Light[] { return this.lights.map((l) => l.light); }
 
   dispose(): void {
     for (const a of this.animations) a.revert();
-    for (const layer of this.layers.values()) {
-      layer.group.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { const mat = m.material as THREE.MeshBasicMaterial; if (mat.map && ![...glowCache.values()].includes(mat.map)) mat.map.dispose(); mat.dispose(); } });
-      layer.group.removeFromParent();
-    }
+    for (const l of this.layers) l.group.removeFromParent();
+    for (const ml of this.lights) ml.streak?.removeFromParent();
+    for (const m of this.mists) m.removeFromParent();
+    for (const g of this.geos) g.dispose();
+    for (const m of this.mats) m.dispose();
   }
 }
 
-const glowCache = new Map<string, THREE.Texture>();
+export { CAMERA_Y };

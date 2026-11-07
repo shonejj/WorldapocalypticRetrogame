@@ -6,21 +6,21 @@ import { CompanionBrain, InfectedBrain, PlayerBrain, type AIWorld, type Brain } 
 import { ITEMS, NOISE, SURVIVORS, WEAPONS, type ItemId } from './data';
 import type { LevelDef, Loot } from './levels/types';
 import { CAT, createWorld, rayCastClosest, STEP, type FixtureTag } from '../physics/world';
-import { createRagdoll, destroyRagdoll, kickAll, kickPart, type Ragdoll } from '../physics/ragdoll';
+import { createSpriteRagdoll, destroySpriteRagdoll, kickAll, kickPart, type SpriteRagdoll } from '../physics/spriteRagdoll';
 import { Rng, clamp, damp } from '../core/rng';
 import { audio, type Sfx } from '../core/audio';
 import type { Command } from '../core/input';
 import { store } from '../core/storage';
 import type { Renderer } from '../render/renderer';
 import { WorldView } from '../render/worldView';
-import { CharacterView, skinTextures, type SkinTextures } from '../render/characterView';
+import { CharacterSprite } from '../render/spriteView';
 import { Fx } from '../render/fx';
 import { Rain } from '../render/weather';
-import { buildSkin, jitterColor, mixColor, portraitDataURL, type Appearance } from '../render/art/characters';
-import { paintBarrel, paintBarrier, paintCone, paintCrate, paintDumpster } from '../render/art/environment';
-import { PPU, PAL } from '../render/painter';
-import { spriteFrom } from '../render/renderer';
+import { CAMERA_Y } from '../render/renderer';
+import { litMaterial, uploadLights, type Light } from '../render/lighting';
 import { ITEM_PICKUP_TEX } from '../render/art/items';
+import type { Assets, CharId } from '../render/assets';
+import { KIT, PX_PER_M } from './levels/kit';
 
 export type GameEvent =
   | { type: 'toast'; text: string; kind?: 'loot' | 'info' | 'warn' }
@@ -34,7 +34,7 @@ export type GameEvent =
   | { type: 'checkpoint' };
 
 interface PropEnt { body: planck.Body; mesh: THREE.Mesh; material: 'metal' | 'wood' | 'concrete'; hp: number }
-interface Corpse { actor: Actor; ragdoll: Ragdoll; view: CharacterView; age: number }
+interface Corpse { actor: Actor; ragdoll: SpriteRagdoll; view: CharacterSprite; age: number }
 interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'goal'; loot?: Loot; time: number; noise?: number }
 
 export interface SaveData {
@@ -43,7 +43,6 @@ export interface SaveData {
   looted: string[]; picked: string[]; killed: string[]; controlled: number; objectivesDone: string[];
 }
 
-const PROP_SIZES = { barrel: [0.56, 0.86], crate: [0.8, 0.72], cone: [0.32, 0.52], barrier: [1.7, 0.8], dumpster: [2.2, 1.4] } as const;
 
 export class Game implements ActorHost, AIWorld {
   readonly world: planck.World;
@@ -54,7 +53,7 @@ export class Game implements ActorHost, AIWorld {
   readonly survivors: Actor[] = [];
   readonly infected: Actor[] = [];
   private brains = new Map<number, Brain>();
-  private views = new Map<number, CharacterView>();
+  private views = new Map<number, CharacterSprite>();
   private props: PropEnt[] = [];
   private corpses: Corpse[] = [];
   private pickups: { id: string; x: number; item: ItemId; qty: number; mesh: THREE.Mesh }[] = [];
@@ -80,13 +79,14 @@ export class Game implements ActorHost, AIWorld {
   ended = false;
   playerBrain = new PlayerBrain();
   shakeEnabled = true;
-  private infectedTex: SkinTextures[] = [];
-  private bruteTex: SkinTextures | null = null;
+  private flashes: { light: Light; t: number }[] = [];
+  private lastShots = new Map<number, number>();
 
-  constructor(readonly r: Renderer, readonly level: LevelDef, save: SaveData | null) {
+  constructor(readonly r: Renderer, readonly level: LevelDef, save: SaveData | null, readonly assets: Assets) {
     this.rng = new Rng(level.seed);
     this.world = createWorld(level.width);
-    this.view = new WorldView(r, level);
+    this.view = new WorldView(r, level, assets);
+    this.view.onLightning = () => setTimeout(() => audio.play('thunder'), 700 + Math.random() * 1500);
     this.fx = new Fx(r.scene);
     this.rain = new Rain(r.rig);
     this.checkpointX = save?.checkpoint ?? level.spawnX;
@@ -100,7 +100,7 @@ export class Game implements ActorHost, AIWorld {
     this.buildProps();
     this.buildInteractables();
     this.camX = this.leader.x;
-    r.rig.position.set(this.camX, 2.25, 0);
+    r.rig.position.set(this.camX, CAMERA_Y, 0);
   }
 
   // ------------------------------------------------------------------ setup
@@ -109,10 +109,9 @@ export class Game implements ActorHost, AIWorld {
       const a = new Actor({ x: this.checkpointX - i * 1.1, survivor: def });
       const s = save?.party.find((p) => p.id === def.id);
       if (s) { a.hp = s.hp; Object.assign(a.mag, s.mag); if (!s.alive) { a.alive = false; a.hp = 0; } }
-      const skin = buildSkin(def.appearance);
-      this.portraits.push(portraitDataURL(skin));
-      const v = new CharacterView(skinTextures(skin), a.scale, 0.2 - i * 0.03);
-      v.setWeapon(WEAPONS[a.weapon].art);
+      const c = this.assets.chars[def.id as CharId];
+      this.portraits.push(c.portraitUrl);
+      const v = new CharacterSprite(c, a.scale, 0.3 - i * 0.05);
       this.r.scene.add(v.group);
       this.views.set(a.id, v);
       this.survivors.push(a);
@@ -123,28 +122,16 @@ export class Game implements ActorHost, AIWorld {
     this.survivors.forEach((a, i) => this.brains.set(a.id, i === this.controlled ? this.playerBrain : new CompanionBrain()));
   }
 
-  private infectedAppearance(seed: number, brute: boolean): Appearance {
-    const r = new Rng(seed);
-    const skin = mixColor(r.pick(['#8a7a6a', '#a08a78', '#6a5a4c', '#9a8070']), '#6f7a6a', 0.55);
-    return {
-      seed, skin: jitterColor(skin, r.range(0.85, 1.05)), hair: r.pick(['#1a1612', '#3a2a20', '#5a5040']),
-      hairStyle: r.pick(['patchy', 'messy', 'buzz', 'long'] as const), beard: r.pick(['none', 'stubble'] as const), headwear: brute ? 'none' : r.pick(['none', 'none', 'hood', 'cap'] as const),
-      top: jitterColor(r.pick(['#5a4a3a', '#3a4a5a', '#6a3a32', '#4a5a40', '#7a7468']), 0.8), topStyle: brute ? 'tshirt' : r.pick(['jacket', 'hoodie', 'tshirt', 'coat'] as const),
-      shirt: brute ? '#8a7f6a' : r.pick(['#8a8478', '#5a5048', '#6a6a70']), pants: r.pick(['#2e3440', '#4a4032', '#3a3a3a']), boots: '#2a2018',
-      infected: true, torn: brute ? 0.35 : 0.6, blood: brute ? 0.6 : r.range(0.3, 0.8),
-    };
-  }
-
   private buildInfected(): void {
-    for (let i = 0; i < 6; i++) this.infectedTex.push(skinTextures(buildSkin(this.infectedAppearance(900 + i * 17, false))));
-    this.bruteTex = skinTextures(buildSkin(this.infectedAppearance(4242, true)));
+    const looks: CharId[] = ['infected_a', 'infected_b', 'infected_c'];
     for (const def of this.level.infected) {
       if (this.killed.has(def.id)) continue;
       const a = new Actor({ x: def.x, infected: def.type });
       a.levelId = def.id; a.state = def.state; a.facing = def.facing ?? (this.rng.chance(0.5) ? 1 : -1);
-      const tex = def.type === 'brute' ? this.bruteTex! : this.infectedTex[this.rng.int(0, this.infectedTex.length - 1)];
-      const tint = def.type === 'runner' ? 0xc8d0c8 : 0xffffff;
-      const v = new CharacterView(tex, a.scale, 0.05 + this.rng.range(0, 0.1), tint);
+      const look = def.type === 'brute' ? 'infected_c' : looks[this.rng.int(0, 2)];
+      const tint = def.type === 'brute' ? 0xb8a8a0 : def.type === 'runner' ? 0xd8e0d0 : 0xffffff;
+      const v = new CharacterSprite(this.assets.chars[look], a.scale, 0.12 + this.rng.range(0, 0.1), tint);
+      if (def.state === 'dormant') v.lying = 1;
       this.r.scene.add(v.group); this.views.set(a.id, v);
       this.brains.set(a.id, new InfectedBrain((z) => this.cry(z), (z) => this.sfxAt('groan', z.x, z.infectedType === 'brute' ? 1.4 : 0.7)));
       this.infected.push(a);
@@ -153,23 +140,25 @@ export class Game implements ActorHost, AIWorld {
 
   private buildProps(): void {
     for (const p of this.level.props) {
-      const [w, h] = PROP_SIZES[p.kind];
-      const painter = p.kind === 'barrel' ? paintBarrel(Math.round(p.x * 10), this.rng.chance(0.5) ? PAL.rust : PAL.metal) : p.kind === 'crate' ? paintCrate(Math.round(p.x * 10))
-        : p.kind === 'cone' ? paintCone(1) : p.kind === 'barrier' ? paintBarrier(Math.round(p.x)) : paintDumpster(Math.round(p.x));
-      const mesh = spriteFrom(painter, { ppu: PPU.near, anchorY: 0.5 }, { w, h });
-      mesh.position.z = -0.6;
+      const k = KIT[p.kind], tex = this.assets.layers[k.layer], size = this.assets.layerSize[k.layer];
+      const [x0, y0, x1, y1] = k.rect, w = (x1 - x0) / PX_PER_M, h = (y1 - y0) / PX_PER_M;
+      const g = new THREE.PlaneGeometry(w, h);
+      const uv = g.getAttribute('uv') as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, (x0 + uv.getX(i) * (x1 - x0)) / size.w, 1 - (y1 - uv.getY(i) * (y1 - y0)) / size.h);
+      const mesh = new THREE.Mesh(g, litMaterial(tex, { alphaTest: 0.3 }));
+      mesh.position.z = -0.5;
       this.r.scene.add(mesh);
-      const body = p.dynamic
-        ? this.world.createDynamicBody({ position: { x: p.x, y: h / 2 + 0.01 }, angularDamping: 0.4 })
-        : this.world.createBody({ position: { x: p.x, y: h / 2 } });
-      const material = p.kind === 'crate' ? 'wood' : p.kind === 'barrier' ? 'concrete' : 'metal';
+      const sink = (y1 - k.ground) / PX_PER_M;
+      const body = this.world.createDynamicBody({ position: { x: p.x, y: h / 2 - sink + 0.01 }, angularDamping: 0.4 });
+      const material = p.kind === 'crates' ? 'wood' : 'metal';
       const tag: FixtureTag = { kind: 'prop', id: this.props.length, material };
-      body.createFixture(new planck.Box(w / 2, h / 2), { density: p.kind === 'cone' ? 12 : p.kind === 'barrel' ? 55 : 40, friction: 0.6, restitution: 0.1, filterCategoryBits: CAT.PROP, filterMaskBits: CAT.GROUND | CAT.PROP | CAT.RAGDOLL, userData: tag });
+      body.createFixture(new planck.Box(w * 0.46, h / 2 - sink * 0.5), { density: p.kind === 'cone' ? 12 : p.kind === 'barrel' ? 55 : 40, friction: 0.6, restitution: 0.1, filterCategoryBits: CAT.PROP, filterMaskBits: CAT.GROUND | CAT.PROP | CAT.RAGDOLL, userData: tag });
       this.props.push({ body, mesh, material, hp: 100 });
     }
     for (const p of this.level.pickups) {
       if (this.picked.has(p.id)) continue;
-      const mesh = spriteFrom(ITEM_PICKUP_TEX(p.item), { ppu: PPU.near, anchorY: 0 }, { w: 0.36, h: 0.3 });
+      const painter = ITEM_PICKUP_TEX(p.item);
+      const mesh = new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.33).translate(0, 0.165, 0), litMaterial(painter.texture(), { alphaTest: 0.4 }));
       mesh.position.set(p.x, 0.02, 0.15); this.r.scene.add(mesh);
       this.pickups.push({ ...p, mesh });
       animate(mesh.position, { y: [0.02, 0.1], duration: 900, loop: true, alternate: true, ease: 'inOutSine' });
@@ -249,10 +238,12 @@ export class Game implements ActorHost, AIWorld {
 
   fire(a: Actor): void {
     const w = WEAPONS[a.weapon];
-    const muzzleY = (a.crouching ? 0.95 : 1.38) * a.scale;
-    const mx = a.x + a.facing * 0.62 * a.scale;
+    const m = this.views.get(a.id)?.muzzle(a.facing);
+    const muzzleY = m?.y ?? 1.32 * a.scale;
+    const mx = m?.x ?? a.x + a.facing * 0.9 * a.scale;
     this.sfxAt(w.sound, a.x, a === this.leader ? 1 : 0.75);
     this.fx.muzzle(mx, muzzleY, w.pellets > 1 ? 1.3 : 0.9);
+    this.flashes.push({ light: { x: mx, y: muzzleY, radius: 4.5, intensity: 2.2, color: new THREE.Color(1, 0.75, 0.4) }, t: 0.07 });
     this.fx.casing(a.x + a.facing * 0.2, muzzleY, a.facing, w.pellets > 1);
     this.emitNoise(a.x, w.noise, null);
     if (a === this.leader) { this.lastPlayerShot = this.time; this.shake(w.shake); }
@@ -352,13 +343,13 @@ export class Game implements ActorHost, AIWorld {
 
   private kill(t: Actor, dir: 1 | -1, knock: number): void {
     const v = this.views.get(t.id)!;
-    const rd = createRagdoll(this.world, t.skel, t.x, 0, t.scale, t.facing, { x: t.vx + t.knockVx, y: 0 }, t.infected?.density ?? 1);
+    const rd = createSpriteRagdoll(this.world, v.c.meta, t.x, t.scale, t.facing, { x: t.vx + t.knockVx, y: 0 }, t.infected?.density ?? 1);
+    v.enterRagdoll();
     const k = Math.min(5, 0.6 + knock * 0.3) * ((t.infected?.knockbackResist ?? 1) < 0.5 ? 0.5 : 1);
     kickAll(rd, { x: dir * k * 0.45, y: 0.4 });
     kickPart(rd, 'torso', { x: dir * k, y: 0.6 });
     kickPart(rd, 'head', { x: dir * k * 1.3, y: 0.8 });
     this.corpses.push({ actor: t, ragdoll: rd, view: v, age: 0 });
-    v.setWeapon(null);
     if (t.team === 'infected') {
       this.killed.add(t.levelId);
       this.sfxAt('death', t.x, 0.5);
@@ -495,41 +486,51 @@ export class Game implements ActorHost, AIWorld {
   }
 
   private updateView(dt: number): void {
-    // camera: follow leader with look-ahead, clamp to level
     const L = this.leader;
-    this.camLead = damp(this.camLead, L.facing * 1.6 + L.vx * 0.35, 2.5, dt);
+    this.camLead = damp(this.camLead, L.facing * 1.8 + L.vx * 0.35, 2.5, dt);
     const half = this.r.viewWidth / 2;
-    const target = clamp(L.x + this.camLead, half - 2, this.level.width - half + 2);
+    const target = clamp(L.x + this.camLead, half - 1.5, this.level.width - half + 1.5);
     this.camX = damp(this.camX, target, 5, dt);
     this.r.rig.position.x = this.camX;
     audio.listenerX = this.camX;
-    this.view.update(dt, this.camX);
+    this.view.update(dt, this.camX, this.time);
     this.rain.update(dt, this.r.rig.position.y);
     for (const x of this.rain.splashX) if (Math.random() < 0.3) this.fx.splash(this.camX + x);
     this.fx.update(dt);
-    // actors
     for (const a of [...this.survivors, ...this.infected]) {
-      const v = this.views.get(a.id)!;
       if (!a.alive) continue;
-      const w = WEAPONS[a.weapon];
-      const aiming = a.team === 'survivor' && a.aimT > 0 && w.hold !== 'melee' && a.reloadT <= 0;
-      if (a.team === 'survivor') v.setWeapon(a.meleeT >= 0 ? 'pipe' : w.art);
-      v.pose(a.skel, a.x, a.y, a.facing, aiming ? a.recoil * 0.25 * a.facing : null);
-      v.setLighting(this.view.lightAt(a.x), a.hurtT * 0.6);
+      const v = this.views.get(a.id)!;
+      const speed = Math.abs(a.vx);
+      if (a.team === 'survivor') {
+        const anim = a.drawT >= 0 ? 'draw' : a.aiming ? (speed > 0.25 ? 'aimWalk' : 'aim') : a.running ? 'run' : speed > 0.25 ? 'walk' : 'idle';
+        v.play(anim, dt, speed);
+        v.squash = damp(v.squash, a.crouching ? 0.9 : 1, 10, dt);
+        const shots = this.lastShots.get(a.id) ?? 0;
+        if (a.shotsFired !== shots) { this.lastShots.set(a.id, a.shotsFired); v.recoil = 0.07; }
+        if (a.meleeT >= 0) v.lunge = Math.sin(Math.min(1, a.meleeT / 0.42) * Math.PI) * 0.28;
+      } else {
+        v.lying = damp(v.lying, a.state === 'dormant' ? 1 : 0, a.state === 'waking' ? 3 : 8, dt);
+        v.play(speed > 0.15 ? 'walk' : 'idle', dt, speed, a.infectedType === 'runner' && speed > 2 ? 1.1 : 1);
+        if (a.attackT >= 0) v.lunge = Math.sin(Math.min(1, a.attackT / a.infected!.attackTime) * Math.PI) * 0.35;
+      }
+      v.hurtFlash(a.hurtT * 0.5);
+      v.pose(a.x, a.y, a.facing, dt);
     }
-    // corpses
     this.corpses = this.corpses.filter((c) => {
       c.view.poseRagdoll(c.ragdoll);
-      c.view.setLighting(this.view.lightAt(c.ragdoll.bodies.torso.getPosition().x), 0);
       if (c.age > 900) {
         c.view.opacity -= dt * 0.8;
-        if (c.view.opacity <= 0) { destroyRagdoll(this.world, c.ragdoll); this.r.scene.remove(c.view.group); c.view.dispose(); return false; }
+        if (c.view.opacity <= 0) { destroySpriteRagdoll(this.world, c.ragdoll); this.r.scene.remove(c.view.group); c.view.dispose(); return false; }
       }
       return true;
     });
-    // props
     for (const p of this.props) { const b = p.body.getPosition(); p.mesh.position.x = b.x; p.mesh.position.y = b.y; p.mesh.rotation.z = p.body.getAngle(); }
+    this.flashes = this.flashes.filter((f) => (f.t -= dt) > 0);
+    uploadLights([...this.flashes.map((f) => f.light), ...this.view.allLights()], this.camX);
   }
+
+  /** Screen-space anchor above an actor's head (HUD name tags). */
+  tagAnchor(a: Actor): { x: number; y: number } { return this.r.toScreen(a.x, 2.1 * a.scale + 0.1); }
 
   shake(amount: number): void {
     if (!this.shakeEnabled || amount <= 0) return;
@@ -549,8 +550,9 @@ export class Game implements ActorHost, AIWorld {
 
   dispose(): void {
     this.view.dispose();
+    for (const c of this.corpses) destroySpriteRagdoll(this.world, c.ragdoll);
     for (const v of this.views.values()) { this.r.scene.remove(v.group); v.dispose(); }
-    for (const p of this.props) { this.r.scene.remove(p.mesh); (p.mesh.material as THREE.MeshBasicMaterial).map?.dispose(); (p.mesh.material as THREE.Material).dispose(); }
+    for (const p of this.props) { this.r.scene.remove(p.mesh); p.mesh.geometry.dispose(); (p.mesh.material as THREE.Material).dispose(); }
     for (const p of this.pickups) this.r.scene.remove(p.mesh);
     this.r.rig.remove(this.rain.group);
     this.fx.dispose();
