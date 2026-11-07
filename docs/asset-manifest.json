@@ -1,0 +1,29 @@
+{
+  "project": "The Last Frequency",
+  "version": 2,
+  "policy": "All assets are authored in code in this repository (MIT). No external or generated images.",
+  "assets": [
+    { "id": "tex.brick", "kind": "texture", "source": "src/art/textures.ts#brick", "size": 512, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.concrete", "kind": "texture", "source": "src/art/textures.ts#concrete", "size": 512, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.plaster", "kind": "texture", "source": "src/art/textures.ts#plaster", "size": 512, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.asphalt_wet", "kind": "texture", "source": "src/art/textures.ts#asphalt", "size": 512, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.paving", "kind": "texture", "source": "src/art/textures.ts#paving", "size": 512, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.metal_rust", "kind": "texture", "source": "src/art/textures.ts#rust", "size": 256, "maps": ["color", "roughness"], "status": "approved" },
+    { "id": "tex.wood", "kind": "texture", "source": "src/art/textures.ts#wood", "size": 256, "maps": ["color", "normal", "roughness"], "status": "approved" },
+    { "id": "tex.cloth", "kind": "texture", "source": "src/art/textures.ts#cloth", "size": 128, "maps": ["color", "normal"], "status": "approved" },
+    { "id": "tex.foliage", "kind": "texture", "source": "src/art/textures.ts#leaves", "size": 256, "maps": ["color+alpha"], "status": "approved" },
+    { "id": "tex.signs", "kind": "texture", "source": "src/art/textures.ts#sign", "size": "512x128", "maps": ["color", "emissive"], "status": "approved" },
+    { "id": "mesh.building.*", "kind": "mesh-family", "source": "src/art/buildings.ts", "variants": ["apartment", "store", "pharmacy", "garage", "ruin"], "status": "approved" },
+    { "id": "mesh.relay", "kind": "mesh", "source": "src/art/buildings.ts#relay", "status": "approved" },
+    { "id": "mesh.overpass", "kind": "mesh", "source": "src/art/street.ts#overpass", "status": "approved" },
+    { "id": "mesh.street.*", "kind": "mesh-family", "source": "src/art/street.ts", "variants": ["streetlamp", "powerPole", "cables", "fence", "billboard", "sign"], "status": "approved" },
+    { "id": "mesh.vehicle.*", "kind": "mesh-family", "source": "src/art/vehicles.ts", "variants": ["sedan", "hatch", "van", "bus", "truck"], "status": "approved" },
+    { "id": "mesh.prop.*", "kind": "mesh-family", "source": "src/art/props.ts", "variants": ["barrel", "crate", "barrier", "dumpster", "cone", "tires", "trashbag", "bottle"], "collision": "box/circle proxies in src/game/world.ts", "status": "approved" },
+    { "id": "mesh.nature.*", "kind": "mesh-family", "source": "src/art/nature.ts", "variants": ["tree", "bush", "ivy", "grass"], "status": "approved" },
+    { "id": "char.survivor.*", "kind": "character-family", "source": "src/art/characters.ts", "variants": ["reed", "maya", "miller", "iris"], "rig": "src/game/rig.ts", "status": "approved" },
+    { "id": "char.infected.*", "kind": "character-family", "source": "src/art/characters.ts", "variants": ["common", "runner", "brute"], "rig": "src/game/rig.ts", "status": "approved" },
+    { "id": "mesh.weapon.*", "kind": "mesh-family", "source": "src/art/weapons.ts", "variants": ["pistol", "shotgun", "rifle", "pipe"], "status": "approved" },
+    { "id": "fx.*", "kind": "vfx", "source": "src/render/fx.ts, src/render/weather.ts", "variants": ["rain", "splash", "muzzle", "tracer", "blood", "sparks", "dust", "casing"], "status": "approved" },
+    { "id": "audio.*", "kind": "audio", "source": "src/core/audio.ts", "note": "fully synthesised, see audio-design", "status": "approved" }
+  ]
+}

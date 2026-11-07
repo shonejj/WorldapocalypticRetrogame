@@ -1,62 +1,47 @@
 # The Last Frequency
 
-A narrative 2.5D survival adventure that runs entirely in the browser — and keeps running with no internet once it has loaded.
-A small squad of ordinary survivors follows a repeating radio transmission through the ruins of a world taken by a microscopic organism.
+A narrative **2.5D survival adventure** that runs entirely in the browser and keeps working with **no internet** after the first visit. A small squad of ordinary survivors follows a repeating radio transmission through a world taken by a microscopic organism.
 
-> The game title lives in **one place**: [`src/config/game.ts`](src/config/game.ts). Change it there and the page title, PWA manifest, title screen and HUD all follow.
+The title and in-world names live in one file: [`src/config/game.ts`](src/config/game.ts).
 
 ## Play
+- **Online:** GitHub Pages (auto-deployed from `main`).
+- **Offline:** open once; the service worker caches every file. It then loads and plays with no network, and installs to home screen / desktop.
+- **Keyboard + mouse, gamepad, or touch.** Every action is rebindable (Settings → Controls).
 
-- **Online:** GitHub Pages (deployed automatically from `main`, see below).
-- **Offline:** open the page once; a service worker caches every file. After that it loads and plays with no network, and can be installed to the home screen / desktop.
-- **Desktop:** keyboard + mouse, or a gamepad. **Mobile:** on-screen touch controls appear automatically.
-
-| Action | Keyboard | Gamepad |
+| Action | Keyboard / mouse | Gamepad |
 |---|---|---|
-| Move / run | A D / ← → · Shift | Left stick · LB |
-| Crouch (sneak) | C / S / Ctrl | B |
-| Fire (loud) | J / left mouse | RT |
-| Melee (quiet; takedown on unaware infected) | K / F / right mouse | X |
-| Reload · Heal | R · H | Y · D-pad ↑ |
+| Move · run | A D / ← → · Shift | Left stick / D-pad · LB / L3 |
+| Crouch (sneak, toggle) | C / Ctrl | B |
+| Aim & fire (loud) | J / left mouse | RT / RB |
+| Melee (quiet; takedown on unaware infected) | F / K / right mouse | X |
+| Throw bottle lure | T / G | LT |
 | Search / interact | E / W / ↑ | A |
-| Switch survivor | 1–4 / Tab / Q | LT |
-| Squad hold / follow | G | D-pad ↓ |
-| Squad & stash · Pause | I · Esc | Select · Start |
+| Reload · heal | R · H | Y · D-pad ↑ |
+| Switch survivor · squad hold/follow | 1–4 / Tab / Q · V | R3 · D-pad ↓ |
+| Inventory & crafting · pause | I / B · Esc / P | View · Menu |
+
+## Chapter 1 — Market Street
+Leave the alley behind **FRESH VEGGIES**, scavenge the street, lure the infected out of the pharmacy, craft a relay fuse at the garage workbench, get through the infested overpass, and restore **Relay 7** while something enormous guards it. Choices in the conversations shape how the squad sees Reed.
 
 ## Develop
-
 ```bash
 npm install
 ```
 ```bash
-npm run dev        # http://localhost:5173 (window.__game is exposed in dev for debugging)
+npm run dev       # http://localhost:5173  (window.__game exposed in dev)
 ```
 ```bash
-npm run check      # typecheck + tests + production build
-```
-```bash
-npm run assets     # rebuild public/assets from assets-src (after art or store-name changes)
+npm run check     # typecheck + 26 unit tests + production build
 ```
 
-Stack: **Three.js** (rendering), **Anime.js v4** (tweens, UI, camera shake, lamp flicker), **Planck.js** (2D physics, ragdolls), **Vite** + **TypeScript**. No runtime CDN or asset downloads — everything is bundled.
+## Built with
+**three.js** (3D world, PBR, shadows, post-processing) · **Planck.js** (2D physics in the gameplay plane, ragdolls, props, thrown lures) · **Anime.js v4** (UI and HUD motion) · **inkjs** (Ink narrative, compiled at build time) · **Vite + TypeScript**. No runtime downloads; no external art or audio — everything is authored in code.
+
+How it is structured, and which game-dev skill drove each part: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). Art direction and asset manifest: [docs/ART_DIRECTION.md](docs/ART_DIRECTION.md), [docs/asset-manifest.json](docs/asset-manifest.json). Design and roadmap: [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md).
 
 ## Deploy (GitHub Pages)
-
-`.github/workflows/deploy.yml` typechecks, tests, builds and deploys on every push to `main`.
-One-time repo setting: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-The build uses relative URLs (`base: './'`), so it works under `https://<user>.github.io/<repo>/` without changes.
-
-## How it is built
-
-- **Painted art, processed at build time** (`scripts/`, see [docs/ASSET_PIPELINE.md](docs/ASSET_PIPELINE.md)): the parallax layers are kit-bashed into a longer street across depth bands; Reed's animation is extracted from a video (idle, walk, run, draw, aim, aim-walk); every character gets an atlas, cut-out ragdoll limbs and a portrait. ~7.8 MB, all precached for offline play.
-- **Lighting & atmosphere** (`src/render/lighting.ts`, `worldView.ts`, `renderer.ts`): lamps, shop windows and muzzle flashes are real 2D lights on characters and props; wet-street reflections, rain, mist, lightning, bloom and a film grade.
-- **Ragdolls from the art** (`src/physics/spriteRagdoll.ts`): on death the sprite is swapped for its cut-out limbs on Planck bodies with neck/hip/knee joints.
-- **One ruleset for everyone** (`src/game/actor.ts`): player input, squad bots and infected all produce the same `Intent` each fixed 60 Hz tick — the seam a future network layer will use.
-- **Stealth through sound and sight** (`src/game/ai.ts`): infected build suspicion from what they see (distance, light, crouching, running) and walk to noises (footsteps, gunfire, impacts). Gunfire pulls the street.
-- **Squad bots**: follow in formation, mirror your stance, hold fire on unaware infected, defend when hunted, reload when calm; Maya heals, Miller hits hard, Iris senses infected on the radio band, Reed scavenges extra loot.
-
-See [docs/GAME_DESIGN.md](docs/GAME_DESIGN.md) for the design, story bible and roadmap.
+`.github/workflows/deploy.yml` runs `npm run check` and deploys `dist/` on every push to `main`. One-time repo setting: **Settings → Pages → Source: GitHub Actions**. Relative URLs make it work under `/<repo>/`.
 
 ## License
-
 MIT — see [LICENSE](LICENSE).

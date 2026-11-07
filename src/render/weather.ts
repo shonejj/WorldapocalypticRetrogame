@@ -1,53 +1,37 @@
 import * as THREE from 'three';
-import { VIEW_HEIGHT } from './renderer';
 
-/** Slanted rain streaks in two depth sheets + ground splashes. Lives in camera-rig space. */
+/** Rain: a box of streaks that follows the camera, plus ground splash positions for FX. */
 export class Rain {
-  readonly group = new THREE.Group();
-  private sheets: { lines: THREE.LineSegments; drops: Float32Array; speed: number; len: number; w: number }[] = [];
+  readonly lines: THREE.LineSegments;
+  private drops: Float32Array; private n: number;
   enabled = true;
-  splashX: number[] = [];
+  splashes: { x: number; z: number }[] = [];
+  private center = new THREE.Vector3();
 
-  constructor(rig: THREE.Object3D) {
-    rig.add(this.group);
-    this.addSheet(650, 0.42, 16, 0.55, 4, 0x9fc4d8);      // near, in front of gameplay
-    this.addSheet(900, 0.2, 12, 0.3, -40, 0x6f8fa3);      // far, behind street
+  constructor(scene: THREE.Scene, count = 2600) {
+    this.n = count; this.drops = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) this.respawn(i, true);
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 6), 3));
+    this.lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9fc4d8, transparent: true, opacity: 0.32, depthWrite: false }));
+    this.lines.frustumCulled = false; scene.add(this.lines);
   }
-
-  private addSheet(n: number, opacity: number, speed: number, len: number, z: number, color: number): void {
-    const w = VIEW_HEIGHT * 3.2;
-    const drops = new Float32Array(n * 2);
-    for (let i = 0; i < n; i++) { drops[i * 2] = (Math.random() - 0.5) * w; drops[i * 2 + 1] = Math.random() * VIEW_HEIGHT * 1.2; }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(n * 6), 3));
-    const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false, fog: false }));
-    lines.frustumCulled = false; lines.position.z = z;
-    this.group.add(lines);
-    this.sheets.push({ lines, drops, speed, len, w });
+  private respawn(i: number, anywhere: boolean): void {
+    const d = this.drops;
+    d[i * 3] = this.center.x + (Math.random() - 0.5) * 34;
+    d[i * 3 + 1] = anywhere ? Math.random() * 14 : 12 + Math.random() * 3;
+    d[i * 3 + 2] = -9 + Math.random() * 15;
   }
-
-  /** camY = camera centre y; groundY in world. */
-  update(dt: number, camY: number): void {
-    this.group.visible = this.enabled;
-    this.splashX.length = 0;
+  update(dt: number, camX: number): void {
+    this.lines.visible = this.enabled; this.splashes.length = 0;
     if (!this.enabled) return;
-    const slant = -0.22;
-    for (const s of this.sheets) {
-      const pos = s.lines.geometry.getAttribute('position') as THREE.BufferAttribute;
-      const n = s.drops.length / 2, bottom = -VIEW_HEIGHT / 2 - 0.5 + (0 - camY + VIEW_HEIGHT / 2) * 0, top = VIEW_HEIGHT / 2 + 1;
-      for (let i = 0; i < n; i++) {
-        let x = s.drops[i * 2], y = s.drops[i * 2 + 1];
-        y -= s.speed * dt; x += slant * s.speed * dt;
-        const groundRel = -camY;                               // world y=0 in rig space
-        if (y < Math.max(bottom, groundRel) ) {
-          if (s.speed > 14 && y < groundRel + 0.1 && Math.random() < 0.25) this.splashX.push(x);
-          y = top + Math.random() * 2; x = (Math.random() - 0.5) * s.w;
-        }
-        if (x < -s.w / 2) x += s.w;
-        s.drops[i * 2] = x; s.drops[i * 2 + 1] = y;
-        pos.setXYZ(i * 2, x, y, 0); pos.setXYZ(i * 2 + 1, x - slant * s.len, y + s.len, 0);
-      }
-      pos.needsUpdate = true;
+    this.center.x = camX;
+    const d = this.drops, pos = this.lines.geometry.getAttribute('position') as THREE.BufferAttribute, vy = -16, vx = -2.4;
+    for (let i = 0; i < this.n; i++) {
+      d[i * 3] += vx * dt; d[i * 3 + 1] += vy * dt;
+      if (d[i * 3 + 1] < 0 || Math.abs(d[i * 3] - camX) > 18) { if (d[i * 3 + 1] < 0 && i % 6 === 0) this.splashes.push({ x: d[i * 3], z: d[i * 3 + 2] }); this.respawn(i, false); }
+      pos.setXYZ(i * 2, d[i * 3], d[i * 3 + 1], d[i * 3 + 2]);
+      pos.setXYZ(i * 2 + 1, d[i * 3] - vx * 0.03, d[i * 3 + 1] - vy * 0.03, d[i * 3 + 2]);
     }
+    pos.needsUpdate = true;
   }
 }

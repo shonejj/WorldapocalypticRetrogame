@@ -1,152 +1,133 @@
 import { animate, createTimer } from 'animejs';
 import { h } from './dom';
-import { WEAPONS } from '../game/data';
-import type { Game, GameEvent } from '../game/game';
+import { ITEMS, WEAPONS, type ItemId } from '../game/data';
+import type { Game } from '../game/game';
+import type { Input } from '../core/input';
+import { audio } from '../core/audio';
 
-/** In-game HUD (DOM overlay). Reads game state each frame; reacts to game events. */
+/**
+ * HUD (game-ui-ux): anchored to corners with safe-area insets; driven by game EVENTS
+ * (stash/objective/alert/switch) with a light per-frame pass only for values that change
+ * continuously (health bars, prompt progress, name tags, stealth meter).
+ */
 export class Hud {
-  readonly root = h('div.overlay.hud');
-  private members: { el: HTMLElement; bar: HTMLElement; tag: HTMLElement }[] = [];
-  private objEls = new Map<string, HTMLElement>();
-  private ammo = h('div.ammo'); private wname = h('div.wn'); private reload = h('div.reload'); private inv = h('div.inv');
-  private eye = h('i'); private eyeLbl = h('div.lbl', {}, 'UNSEEN'); private alertEl = h('div.alert.hidden', {}, '▲ INFECTED HUNTING ▲');
-  private signal = h('div.signal.hidden'); private blips: HTMLElement[] = [];
-  private prompt = h('div.prompt.hidden'); private promptText = h('span'); private promptBar = h('i');
-  private radio = h('div.radio'); private toasts = h('div.toasts'); private hurtEl = h('div.hurt');
-  private fps = h('div.fps.hidden');
-  private radioTimer: { revert(): unknown } | null = null;
+  readonly root = h('div.hud');
+  private members: { el: HTMLElement; hp: HTMLElement; hunger: HTMLElement; thirst: HTMLElement; tag: HTMLElement; bleed: HTMLElement }[] = [];
   private tags: HTMLElement[] = [];
-  private tagsOn = true;
-  private lastKey = '';
+  private ammo = h('div.ammo'); private wname = h('div.wname'); private status = h('div.status'); private inv = h('div.inv'); private weight = h('div.weight');
+  private eyeBar = h('i'); private eyeLbl = h('div.lbl', {}, 'UNSEEN'); private alertEl = h('div.alert.hidden', {}, '▲ THEY\'RE HUNTING YOU ▲');
+  private objList = h('div.objlist');
+  private prompt = h('div.prompt.hidden'); private promptKey = h('kbd'); private promptText = h('span'); private promptBar = h('i');
+  private toasts = h('div.toasts'); private sub = h('div.subtitle'); private hurt = h('div.hurtflash');
+  private signal = h('div.signal'); private blips: HTMLElement[] = [];
+  private beatTitle = h('div.beattitle');
+  private subTimer: { revert(): unknown } | null = null;
+  tagsOn = true;
 
-  constructor(private game: Game, onPause: () => void, onInventory: () => void) {
+  constructor(private g: Game, private input: Input, onPause: () => void, onInventory: () => void) {
     const squad = h('div.squad');
-    game.survivors.forEach((s, i) => {
-      const bar = h('i'), tag = h('div.tag');
-      const el = h('div.member', {}, h('img', { src: game.portraits[i], alt: s.name }), tag,
-        h('div.nm', {}, h('span', {}, s.name.toUpperCase()), h('span.key', {}, String(i + 1))), h('div.bar', {}, bar));
-      el.title = `${s.name} — ${s.survivor!.roleLabel}`;
-      squad.append(el); this.members.push({ el, bar, tag });
+    g.squad.forEach((s, i) => {
+      const hp = h('i'), hunger = h('i'), thirst = h('i'), tag = h('span.you'), bleed = h('span.bleed.hidden', {}, '●');
+      const el = h('div.member', { title: `${s.name} — ${s.survivor!.roleLabel}` },
+        h('div.top', {}, h('b', {}, s.name.toUpperCase()), h('span.key', {}, String(i + 1)), tag, bleed),
+        h('div.role', {}, s.survivor!.roleLabel), h('div.bar.hpbar', {}, hp), h('div.needs', {}, h('div.bar.hunger', { title: 'Hunger' }, hunger), h('div.bar.thirst', { title: 'Thirst' }, thirst)));
+      squad.append(el); this.members.push({ el, hp, hunger, thirst, tag, bleed });
+      const t = h('div.ntag', {}, h('b', {}, s.name.toUpperCase()), h('span', {}, s.survivor!.roleLabel)); this.tags.push(t);
     });
-    const obj = h('div.objectives', {}, h('div.loc', {}, game.level.location), h('div.chapter', {}, game.level.name));
-    for (const o of game.level.objectives) { const e = h('div.obj', {}, o.text); this.objEls.set(o.id, e); obj.append(e); }
-    const weapon = h('div.weapon', {}, this.wname, this.ammo, this.reload, this.inv);
-    const stealth = h('div.stealth', {}, this.eyeLbl, h('div.eye', {}, this.eye), this.alertEl);
+    const obj = h('div.objectives', {}, h('div.loc', {}, g.level.location), h('div.chapter', {}, g.level.name), this.objList);
+    for (const o of g.level.objectives) this.objList.append(h('div.obj', { 'data-id': o.id }, o.text));
+    const weapon = h('div.weapon', {}, this.wname, this.ammo, this.status, this.inv, this.weight);
+    const stealth = h('div.stealth', {}, this.eyeLbl, h('div.eye', {}, this.eyeBar), this.alertEl);
     this.signal.append(h('span.lbl', {}, 'SIGNAL'), h('span.mid'));
-    for (let i = 0; i < 24; i++) { const b = h('span.blip.hidden'); this.blips.push(b); this.signal.append(b); }
-    this.prompt.append(h('kbd', {}, 'E'), this.promptText, h('div.pb', {}, this.promptBar));
-    const top = h('div.toprow', {},
-      h('button.iconbtn', { onclick: onInventory, title: 'Inventory (I)', ariaLabel: 'Inventory' }, '▤'),
-      h('button.iconbtn', { onclick: onPause, title: 'Pause (Esc)', ariaLabel: 'Pause' }, 'II'));
-    const tagLayer = h('div.tags');
-    game.survivors.forEach((s, i) => {
-      const t = h('div.tag', {}, h('img', { src: game.portraits[i], alt: '' }), h('div', {}, h('b', {}, s.name.toUpperCase()), h('span', {}, s.survivor!.roleLabel)));
-      this.tags.push(t); tagLayer.append(t);
-    });
-    this.root.append(tagLayer, squad, obj, stealth, weapon, this.signal, this.prompt, this.radio, this.toasts, this.fps, top);
-    document.body.append(this.hurtEl, this.root);
-    game.listeners.push((e) => this.onEvent(e));
-  }
-
-  setNameTags(v: boolean): void { this.tagsOn = v; }
-  setFpsVisible(v: boolean): void { this.fps.classList.toggle('hidden', !v); }
-  setFps(f: number): void { this.fps.textContent = `${f.toFixed(0)} FPS`; }
-
-  private onEvent(e: GameEvent): void {
-    switch (e.type) {
-      case 'toast': this.toast(e.text, e.kind); break;
-      case 'radio': this.say(e.speaker, e.text); break;
-      case 'alert': this.alertEl.classList.toggle('hidden', !e.on); if (e.on) animate(this.alertEl, { opacity: [0, 1], scale: [1.3, 1], duration: 300, ease: 'outBack' }); break;
-      case 'damage': animate(this.hurtEl, { opacity: [Math.min(1, 0.4 + e.amount / 30), 0], duration: 600, ease: 'outQuad' }); break;
-      case 'death': this.toast(e.player ? `${e.name} is down. Control passes on.` : `${e.name} is down.`, 'warn'); break;
-      case 'checkpoint': this.toast('Checkpoint reached — progress saved', 'info'); break;
-      default: break;
-    }
+    for (let i = 0; i < 20; i++) { const b = h('span.blip.hidden'); this.blips.push(b); this.signal.append(b); }
+    this.prompt.append(this.promptKey, this.promptText, h('div.pbar', {}, this.promptBar));
+    const buttons = h('div.topbtns', {}, h('button.icon', { onclick: onInventory, 'aria-label': 'Inventory and crafting' }, '▤'), h('button.icon', { onclick: onPause, 'aria-label': 'Pause' }, 'Ⅱ'));
+    this.root.append(h('div.tags', {}, ...this.tags), squad, obj, stealth, weapon, this.signal, this.prompt, this.sub, this.toasts, this.beatTitle, buttons);
+    document.body.append(this.hurt, this.root);
+    // event subscriptions
+    g.ev.on('toast', (e) => this.toast(e.text, e.kind));
+    g.ev.on('stash', () => this.refreshStash());
+    g.ev.on('switched', () => { this.refreshStash(); audio.play('uiSelect'); });
+    g.ev.on('objective', (e) => { const el = this.objList.querySelector<HTMLElement>(`[data-id="${e.id}"]`); if (el) { el.classList.toggle('done', e.done); el.classList.add('active'); animate(el, { scale: [1.12, 1], duration: 400, ease: 'outBack' }); } });
+    g.ev.on('alert', (e) => { this.alertEl.classList.toggle('hidden', !e.on); if (e.on) animate(this.alertEl, { opacity: [0, 1], scale: [1.3, 1], duration: 300, ease: 'outBack' }); });
+    g.ev.on('hurt', (e) => animate(this.hurt, { opacity: [Math.min(1, 0.35 + e.amount / 35), 0], duration: 650, ease: 'outQuad' }));
+    g.ev.on('death', (e) => this.toast(e.player ? `${e.name} is down. You take over the next survivor.` : `${e.name} is down.`, 'warn'));
+    g.ev.on('checkpoint', () => this.toast('Checkpoint — progress saved', 'info'));
+    g.ev.on('beat', (e) => { if (e.beat.title) { this.beatTitle.textContent = e.beat.title.toUpperCase(); animate(this.beatTitle, { opacity: [0, 1, 1, 0], letterSpacing: ['0.6em', '0.35em'], duration: 3200, ease: 'outQuad' }); } });
+    for (const id of g.objectives) this.objList.querySelector(`[data-id="${id}"]`)?.classList.add('done');
+    this.refreshStash();
   }
 
   toast(text: string, kind: 'loot' | 'info' | 'warn' = 'info'): void {
-    const t = h(`div.toast.${kind}`, {}, text);
-    this.toasts.append(t);
-    animate(t, { x: [40, 0], opacity: [0, 1], duration: 250, ease: 'outQuad' });
-    animate(t, { opacity: 0, delay: 3200, duration: 500, onComplete: () => t.remove() });
+    const t = h(`div.toast.${kind}`, {}, text); this.toasts.append(t);
+    animate(t, { x: [30, 0], opacity: [0, 1], duration: 240, ease: 'outQuad' });
+    animate(t, { opacity: 0, delay: 3400, duration: 500, onComplete: () => t.remove() });
     while (this.toasts.children.length > 5) this.toasts.firstElementChild?.remove();
   }
 
-  /** Radio subtitle with typewriter reveal. */
-  say(speaker: string, text: string): void {
-    this.radioTimer?.revert();
-    const sp = h('span.sp', {}, `${speaker}:`), body = h('span');
-    this.radio.replaceChildren(sp, body);
-    this.radio.style.opacity = '1';
-    let n = 0;
-    this.radioTimer = createTimer({
-      duration: 24 * text.length, frameRate: 60,
-      onUpdate: (t) => { const k = Math.floor(t.currentTime / 24); if (k !== n) { n = k; body.textContent = text.slice(0, n); } },
-      onComplete: () => { body.textContent = text; animate(this.radio, { opacity: 0, delay: 3500, duration: 800 }); },
-    });
+  /** Subtitle line with a typewriter reveal; returns ms until it should advance. */
+  say(speaker: string, text: string): number {
+    this.subTimer?.revert();
+    const body = h('span');
+    this.sub.replaceChildren(speaker ? h('b', {}, speaker) : '', body);
+    this.sub.classList.toggle('radio', speaker === 'RADIO');
+    this.sub.style.opacity = '1';
+    const total = 28 * text.length;
+    this.subTimer = createTimer({ duration: total, onUpdate: (t) => { body.textContent = text.slice(0, Math.floor(t.currentTime / 28)); }, onComplete: () => { body.textContent = text; } });
+    return total + 1600 + text.length * 20;
+  }
+  clearSubtitle(): void { this.subTimer?.revert(); animate(this.sub, { opacity: 0, duration: 500 }); }
+
+  refreshStash(): void {
+    const g = this.g, L = g.leader, w = WEAPONS[L.weapon];
+    this.wname.textContent = `${L.name.toUpperCase()} · ${w.name.toUpperCase()}`;
+    this.ammo.replaceChildren(`${L.mag}`, h('small', {}, ` / ${w.ammo ? g.stash.count(w.ammo) : '∞'}`));
+    const show: ItemId[] = ['medkit', 'bandage', 'food', 'water', 'bottle', 'radio_part'];
+    this.inv.replaceChildren(...show.filter((k) => g.stash.count(k) || k !== 'radio_part').map((k) => h('span', { title: ITEMS[k].name }, `${ITEMS[k].icon} `, h('b', {}, String(g.stash.count(k))))));
+    this.weight.textContent = `PACK ${g.stash.weight.toFixed(1)} / ${g.stash.limit} kg`;
+    this.weight.classList.toggle('heavy', g.stash.weight > g.stash.limit * 0.9);
   }
 
+  /** Per-frame pass for continuously changing values. */
   update(): void {
-    const g = this.game, L = g.leader;
-    g.survivors.forEach((s, i) => {
-      const t = this.tags[i];
-      const show = this.tagsOn && s.alive && !g.ended;
-      t.style.display = show ? '' : 'none';
-      if (!show) return;
-      const p = g.tagAnchor(s);
-      t.style.transform = `translate(${Math.round(p.x)}px, ${Math.round(p.y)}px) translate(-30%, -100%)`;
-      t.classList.toggle('me', i === g.controlled);
-    });
-    g.survivors.forEach((s, i) => {
+    const g = this.g, L = g.leader;
+    g.squad.forEach((s, i) => {
       const m = this.members[i];
-      m.el.classList.toggle('active', i === g.controlled);
-      m.el.classList.toggle('dead', !s.alive);
-      m.bar.style.width = `${(s.hp / s.maxHp) * 100}%`;
-      m.bar.style.background = s.hp / s.maxHp < 0.35 ? 'var(--danger)' : s.hp / s.maxHp < 0.6 ? 'var(--warn)' : 'var(--ok)';
-      m.tag.textContent = !s.alive ? 'DOWN' : i === g.controlled ? 'YOU' : g.holdPosition ? 'HOLD' : '';
+      m.el.classList.toggle('active', i === g.controlled); m.el.classList.toggle('dead', !s.alive);
+      m.hp.style.width = `${(s.hp / s.maxHp) * 100}%`; m.hp.className = s.hp / s.maxHp < 0.35 ? 'low' : s.hp / s.maxHp < 0.6 ? 'mid' : '';
+      m.hunger.style.width = `${s.hunger * 100}%`; m.thirst.style.width = `${s.thirst * 100}%`;
+      m.bleed.classList.toggle('hidden', !(s.bleed > 0 && s.alive));
+      m.tag.textContent = !s.alive ? 'DOWN' : i === g.controlled ? 'YOU' : g.hold.on ? 'HOLD' : '';
+      const t = this.tags[i], show = this.tagsOn && s.alive && !g.ended;
+      t.style.display = show ? '' : 'none';
+      if (show) { const p = g.r.toScreen(s.x, 2.15, 0); t.style.transform = `translate(${p.x | 0}px, ${p.y | 0}px) translate(-50%, -100%)`; t.classList.toggle('me', i === g.controlled); }
     });
-    for (const [id, el] of this.objEls) el.classList.toggle('done', g.objectivesDone.has(id));
-    const w = WEAPONS[L.weapon];
-    const key = `${L.id}:${L.weapon}:${L.mag[L.weapon]}:${w.ammo ? g.stash[w.ammo] : ''}:${g.stash.medkit}:${g.stash.bandage}:${g.stash.food}:${g.stash.water}:${g.stash.scrap}`;
-    if (key !== this.lastKey) {
-      this.lastKey = key;
-      this.wname.textContent = `${L.name.toUpperCase()} · ${w.name.toUpperCase()}`;
-      this.ammo.replaceChildren(`${L.mag[L.weapon] ?? 0} `, h('small', {}, `| ${w.ammo ? g.stash[w.ammo] ?? 0 : '∞'}`));
-      this.inv.replaceChildren(
-        h('span', {}, '✚ ', h('b', {}, String(g.stash.medkit ?? 0))), h('span', {}, '≡ ', h('b', {}, String(g.stash.bandage ?? 0))),
-        h('span', {}, '◍ ', h('b', {}, String(g.stash.food ?? 0))), h('span', {}, '◌ ', h('b', {}, String(g.stash.water ?? 0))),
-        h('span', {}, '⚙ ', h('b', {}, String(g.stash.scrap ?? 0))));
-    }
-    this.reload.textContent = L.reloadT > 0 ? 'RELOADING…' : L.healT >= 0 ? 'PATCHING UP…' : (L.mag[L.weapon] ?? 0) === 0 && w.ammo ? 'EMPTY — R TO RELOAD' : L.crouching ? 'SNEAKING' : '';
+    this.status.textContent = L.reloadT >= 0 ? 'RELOADING…' : L.healT >= 0 ? 'PATCHING UP…' : L.drawT >= 0 ? 'DRAWING…' : L.mag === 0 && WEAPONS[L.weapon].ammo ? `EMPTY — ${this.input.label('reload')} TO RELOAD` : L.crouching ? 'SNEAKING' : '';
+    if (L.mag !== Number(this.ammo.firstChild?.textContent)) this.refreshStash();
     const det = g.detection();
-    this.eye.style.width = `${det * 100}%`;
-    this.eyeLbl.textContent = det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching ? 'HIDDEN' : 'UNSEEN';
-    // interaction prompt
+    this.eyeBar.style.width = `${det * 100}%`;
+    this.eyeLbl.textContent = det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && g.lightAt(L.x) < 0.3 ? 'HIDDEN' : 'UNSEEN';
     if (g.focus && !g.ended) {
       this.prompt.classList.remove('hidden');
-      this.promptText.textContent = g.focus.label;
-      this.promptBar.style.width = `${g.searchProgress * 100}%`;
+      this.promptKey.textContent = this.input.label('interact');
+      const f = g.focus;
+      this.promptText.textContent = f.kind === 'relay' && !g.stash.count(g.level.goal.needs) ? 'Inspect the relay' : f.label;
+      this.promptBar.style.width = `${g.progress * 100}%`;
     } else this.prompt.classList.add('hidden');
     // Iris: signal band shows infected positions within ±24 m
-    const iris = g.survivors.find((s) => s.survivor?.role === 'signalist');
-    const sense = !!iris?.alive;
-    this.signal.classList.toggle('hidden', !sense);
-    if (sense) {
+    const iris = g.squad.find((s) => s.survivor?.role === 'signalist');
+    this.signal.classList.toggle('hidden', !iris?.alive);
+    if (iris?.alive) {
       let k = 0;
       for (const z of g.infected) {
         if (!z.alive || k >= this.blips.length) continue;
-        const dx = z.x - L.x;
-        if (Math.abs(dx) > 24) continue;
-        const b = this.blips[k++];
-        b.classList.remove('hidden');
-        b.style.left = `${50 + (dx / 24) * 48}%`;
-        b.style.opacity = String(z.state === 'dormant' ? 0.35 : 0.6 + 0.4 * z.suspicion);
-        b.style.height = z.infectedType === 'brute' ? '14px' : '10px';
-        b.style.top = z.infectedType === 'brute' ? '4px' : '6px';
+        const dx = z.x - L.x; if (Math.abs(dx) > 24) continue;
+        const b = this.blips[k++]; b.classList.remove('hidden');
+        b.style.left = `${50 + (dx / 24) * 48}%`; b.style.opacity = String(z.state === 'dormant' ? 0.35 : 0.55 + 0.45 * z.suspicion);
+        b.classList.toggle('big', z.type === 'brute'); b.classList.toggle('hot', z.state === 'chase');
       }
       for (; k < this.blips.length; k++) this.blips[k].classList.add('hidden');
     }
   }
-
-  dispose(): void { this.radioTimer?.revert(); this.root.remove(); this.hurtEl.remove(); }
+  dispose(): void { this.subTimer?.revert(); this.root.remove(); this.hurt.remove(); }
 }

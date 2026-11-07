@@ -1,82 +1,90 @@
 import { WORLD_NAMES } from '../../config/game';
 import type { LevelDef } from './types';
 
-/** Chapter 1 — Market Street. Rainy night; the squad starts at FRESH VEGGIES and
- *  follows the signal under the overpass to the radio shack (Relay 7). */
+/**
+ * Chapter 1 — Market Street (level-design workflow).
+ * Metrics (from data.ts): walk 1.75 m/s, run 4.4 m/s; infected sight 9 m (×0.42 crouched in the dark);
+ * screen ≈ 18 m wide. Encounters are spaced ≥ 1 screen apart so the player can read and plan them.
+ *
+ * Critical path: alley → FRESH VEGGIES → pharmacy (battery) → garage workbench (craft fuse:
+ * scrap+battery+tape) → overpass gauntlet → Relay 7 (needs fuse) → climax (brute) → restore.
+ * Sawtooth pacing: 0.1 teach → 0.3 → 0.45 → 0.15 rest → 0.75 → 0.2 rest → 1.0 climax.
+ */
 export const CHAPTER1: LevelDef = {
-  id: 'ch1_market_street_v2',
-  name: WORLD_NAMES.chapter1,
-  location: 'MARKET STREET',
-  width: 74,
-  spawnX: 4.5,
-  seed: 1977,
-  street: [
-    { piece: 'blockA', x: -1.5 },
-    { piece: 'store', x: 5.6 },
-    { piece: 'vanFence', x: 14.8 },
-    { piece: 'lamp', x: 16.4 },
-    { piece: 'billboard', x: 17.5 },
-    { piece: 'blockB', x: 21.2 },
-    { piece: 'overpass', x: 28.4 },
-    { piece: 'vanFence', x: 46.6, flip: true },
-    { piece: 'lamp', x: 48.2 },
-    { piece: 'billboard', x: 49.3, flip: true },
-    { piece: 'blockA', x: 53, flip: true },
-    { piece: 'relay', x: 60.2 },
-    { piece: 'blockB', x: 65.7, flip: true },
+  id: 'ch1', name: WORLD_NAMES.chapter1, location: WORLD_NAMES.chapter1Location,
+  x0: -6, x1: 150, spawnX: -1, seed: 1977,
+  buildings: [
+    { x: -20, w: 10, floors: 3, kind: 'ruin', wall: 'brick', tint: '#5e3a30' },
+    { x: -9.5, w: 12, floors: 2, kind: 'store', wall: 'plaster', tint: '#8a7a62', sign: WORLD_NAMES.storeName, signBg: '#7a2420' },
+    { x: 3, w: 10, floors: 4, kind: 'apartment', wall: 'concrete', tint: '#6a6e6c', lit: 0.15 },
+    { x: 13.5, w: 11, floors: 3, kind: 'apartment', wall: 'brick', tint: '#6b3f33', lit: 0.1 },
+    { x: 25, w: 11, floors: 2, kind: 'pharmacy', wall: 'concrete', tint: '#73806f', sign: WORLD_NAMES.pharmacyName },
+    { x: 36.5, w: 9, floors: 3, kind: 'ruin', wall: 'plaster', tint: '#7a7262' },
+    { x: 46, w: 12, floors: 1, kind: 'garage', wall: 'concrete', tint: '#5f6360', sign: WORLD_NAMES.garageName },
+    { x: 58.5, w: 9, floors: 4, kind: 'apartment', wall: 'plaster', tint: '#857a66', lit: 0.08 },
+    { x: 97, w: 10, floors: 3, kind: 'apartment', wall: 'brick', tint: '#5e3a30', lit: 0.05 },
+    { x: 107.5, w: 9, floors: 2, kind: 'ruin', wall: 'concrete', tint: '#5d605c' },
+    { x: 136, w: 12, floors: 3, kind: 'ruin', wall: 'brick', tint: '#5a3a30' },
   ],
-  curb: [
-    { piece: 'sedan', x: 19.4 },
-    { piece: 'bus', x: 30.5 },
-    { piece: 'barrier', x: 38.6 },
-    { piece: 'truck', x: 41.2, flip: true },
-    { piece: 'wreck', x: 55.4 },
-    { piece: 'barrier', x: 67.5, flip: true },
-  ],
-  foreground: [
-    { piece: 'fgPlants', x: -4, y: -0.9, depth: 'fg' },
-    { piece: 'fgLeavesL', x: -3, y: 3.6, depth: 'fg' },
-    { piece: 'fgTreeLamp', x: 24.5, y: -0.6, depth: 'fg' },
-    { piece: 'fgHazard', x: 37.5, y: -0.9, depth: 'fg' },
-    { piece: 'fgLeavesR', x: 44, y: 3.7, depth: 'fg' },
-    { piece: 'fgPlants', x: 52, y: -0.9, depth: 'fg', flip: true },
-    { piece: 'fgFence', x: 69, y: -0.7, depth: 'fg' },
-  ],
+  relayX: 121, overpass: [64, 96], billboard: { x: 90, text: 'GENOVA LABS' },
+  lamps: [{ x: -3, lit: true }, { x: 10, lit: true, flicker: true }, { x: 23, lit: false }, { x: 33, lit: true }, { x: 44, lit: true }, { x: 56, lit: true, flicker: true },
+    { x: 70, lit: false }, { x: 80, lit: true, flicker: true }, { x: 92, lit: true }, { x: 104, lit: false }, { x: 116, lit: true }, { x: 130, lit: true, flicker: true }],
+  poles: [-14, 2, 18, 34, 50, 66, 82, 98, 114, 130, 146],
+  fences: [[67, 90], [117, 134]],
+  trees: [-12, 20.5, 62, 112, 141],
+  vehicles: [{ x: 6, kind: 'sedan' }, { x: 21, kind: 'hatch', flip: true }, { x: 41, kind: 'van' }, { x: 52, kind: 'truck', flip: true }, { x: 72, kind: 'bus' }, { x: 86, kind: 'sedan', flip: true }, { x: 102, kind: 'hatch' }, { x: 126, kind: 'van', flip: true }],
   props: [
-    { x: 14.3, kind: 'crates' }, { x: 24.6, kind: 'barrel' }, { x: 25.2, kind: 'barrel' }, { x: 27.5, kind: 'cone' },
-    { x: 39.8, kind: 'cone' }, { x: 47.2, kind: 'crates' }, { x: 58.6, kind: 'barrel' },
+    { x: -4.5, kind: 'dumpster', z: -4.8 }, { x: -2.2, kind: 'trashbag', z: -5.4 }, { x: 4, kind: 'crate' }, { x: 4.8, kind: 'crate' },
+    { x: 15, kind: 'barrel' }, { x: 15.6, kind: 'barrel' }, { x: 24, kind: 'cone', z: 1.0 }, { x: 31, kind: 'trashbag', z: -5.3 }, { x: 38, kind: 'barrier' },
+    { x: 44, kind: 'tires', z: -5.2 }, { x: 49, kind: 'crate' }, { x: 56, kind: 'barrel' }, { x: 63, kind: 'cone', z: 0.9 }, { x: 68, kind: 'barrier' },
+    { x: 77, kind: 'crate' }, { x: 77.8, kind: 'barrel' }, { x: 88, kind: 'barrier' }, { x: 95, kind: 'cone', z: 1.0 }, { x: 108, kind: 'barrel' },
+    { x: 113, kind: 'crate' }, { x: 119, kind: 'barrier' }, { x: 133, kind: 'tires', z: -5.2 },
   ],
   caches: [
-    { id: 'c_veggies', x: 9.8, label: `Search ${WORLD_NAMES.storeName}`, loot: { food: 3, water: 2, cloth: 1 }, time: 1.6 },
-    { id: 'c_sedan', x: 20.8, label: 'Search car trunk', loot: { ammo_pistol: 8, scrap: 2 }, time: 1.2, noise: 3 },
-    { id: 'c_billboard', x: 18.9, label: 'Search the billboard hut', loot: { bandage: 2, battery: 1 }, time: 1.4 },
-    { id: 'c_bus', x: 34, label: 'Search bus', loot: { ammo_pistol: 10, medkit: 1 }, time: 1.6 },
-    { id: 'c_truck', x: 44.5, label: 'Search truck cab', loot: { ammo_shells: 6, ammo_rifle: 5 }, time: 1.4, noise: 3 },
-    { id: 'c_wreck', x: 57, label: 'Search the wreck', loot: { scrap: 4, water: 1 }, time: 1.2, noise: 4 },
+    { id: 'c_veggies', x: -3.6, label: `Search ${WORLD_NAMES.storeName}`, loot: { food: 2, water: 2, cloth: 2 }, time: 1.6 },
+    { id: 'c_sedan', x: 7.6, label: 'Search the sedan', loot: { ammo_rifle: 12, tape: 1 }, time: 1.3, noise: 3 },
+    { id: 'c_apartment', x: 18, label: 'Search the lobby', loot: { alcohol: 1, ammo_9mm: 10 }, time: 1.5 },
+    { id: 'c_pharmacy', x: 28.5, label: `Search the ${WORLD_NAMES.pharmacyName.toLowerCase()}`, loot: { bandage: 2, medkit: 1, battery: 1, alcohol: 1 }, time: 2 },
+    { id: 'c_van', x: 42, label: 'Search the van', loot: { scrap: 2, bottle: 1 }, time: 1.3, noise: 3 },
+    { id: 'c_garage', x: 50, label: `Search the ${WORLD_NAMES.garageName.toLowerCase()}`, loot: { scrap: 3, tape: 1, ammo_shells: 6 }, time: 2 },
+    { id: 'c_bus', x: 74, label: 'Search the bus', loot: { ammo_rifle: 15, water: 1, food: 1 }, time: 1.6 },
+    { id: 'c_billboard', x: 91, label: 'Search the maintenance box', loot: { battery: 1, cloth: 2, ammo_9mm: 8 }, time: 1.4 },
+    { id: 'c_apartment2', x: 101, label: 'Search the apartment', loot: { medkit: 1, food: 1 }, time: 1.6 },
   ],
   pickups: [
-    { id: 'p1', x: 23.5, item: 'ammo_pistol', qty: 6 }, { id: 'p2', x: 31.5, item: 'water', qty: 1 },
-    { id: 'p3', x: 40.4, item: 'ammo_rifle', qty: 3 }, { id: 'p4', x: 52, item: 'bandage', qty: 1 }, { id: 'p5', x: 59, item: 'ammo_shells', qty: 4 },
+    { id: 'p1', x: 11, item: 'bottle', qty: 1 }, { id: 'p2', x: 22, item: 'ammo_9mm', qty: 6 }, { id: 'p3', x: 35, item: 'cloth', qty: 2 },
+    { id: 'p4', x: 60, item: 'water', qty: 1 }, { id: 'p5', x: 79, item: 'ammo_shells', qty: 4 }, { id: 'p6', x: 95, item: 'bandage', qty: 1 },
+    { id: 'p7', x: 110, item: 'ammo_rifle', qty: 10 }, { id: 'p8', x: 117, item: 'bottle', qty: 1 },
   ],
   infected: [
-    { id: 'i1', x: 17.5, type: 'common', state: 'idle', facing: -1 }, { id: 'i2', x: 21, type: 'common', state: 'wander' },
-    { id: 'i3', x: 26.5, type: 'common', state: 'dormant' },
-    { id: 'i4', x: 32, type: 'common', state: 'wander' }, { id: 'i5', x: 34.5, type: 'common', state: 'idle' }, { id: 'i6', x: 36.5, type: 'runner', state: 'idle', facing: -1 },
-    { id: 'i7', x: 41, type: 'common', state: 'dormant' }, { id: 'i8', x: 45.5, type: 'common', state: 'wander' },
-    { id: 'i9', x: 50.5, type: 'runner', state: 'wander' }, { id: 'i10', x: 53.5, type: 'common', state: 'idle' },
-    { id: 'i11', x: 58, type: 'common', state: 'dormant' },
-    { id: 'i12', x: 63.5, type: 'brute', state: 'idle', facing: -1 }, { id: 'i13', x: 61.5, type: 'common', state: 'idle' }, { id: 'i14', x: 66, type: 'common', state: 'wander' },
+    // teach: one lone shambler, facing away → crouch + melee takedown
+    { id: 'z1', x: 14, type: 'common', state: 'idle', facing: 1 },
+    // pharmacy: dormant pair inside the glow → lure with a bottle or sneak in the dark
+    { id: 'z2', x: 29.5, type: 'common', state: 'dormant' }, { id: 'z3', x: 31.5, type: 'common', state: 'dormant', facing: -1 },
+    { id: 'z4', x: 37, type: 'common', state: 'wander' },
+    // overpass gauntlet: crowd + runners; gunfire here pulls everyone
+    { id: 'z5', x: 66, type: 'common', state: 'wander' }, { id: 'z6', x: 69, type: 'common', state: 'idle', facing: -1 }, { id: 'z7', x: 71, type: 'runner', state: 'idle', facing: -1 },
+    { id: 'z8', x: 75, type: 'common', state: 'dormant' }, { id: 'z9', x: 78, type: 'common', state: 'wander' }, { id: 'z10', x: 81, type: 'common', state: 'idle' },
+    { id: 'z11', x: 84, type: 'runner', state: 'wander' }, { id: 'z12', x: 87, type: 'common', state: 'dormant' }, { id: 'z13', x: 93, type: 'common', state: 'wander' },
+    { id: 'z14', x: 106, type: 'common', state: 'idle', facing: -1 }, { id: 'z15', x: 110, type: 'runner', state: 'dormant' },
+    // climax at the relay
+    { id: 'z16', x: 127, type: 'brute', state: 'idle', facing: -1 }, { id: 'z17', x: 124, type: 'common', state: 'idle' }, { id: 'z18', x: 131, type: 'common', state: 'wander' },
   ],
-  checkpoints: [24, 40, 54],
+  workbench: { x: 54 },
+  checkpoints: [24, 57, 96, 116],
+  beats: [
+    { id: 'alley', x0: -6, x1: 10, type: 'teach', intensity: 0.1, ink: 'intro', title: 'Behind the store' },
+    { id: 'street', x0: 10, x1: 24, type: 'teach', intensity: 0.3, ink: 'first_infected' },
+    { id: 'pharmacy', x0: 24, x1: 40, type: 'tension', intensity: 0.45, ink: 'pharmacy' },
+    { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'garage' },
+    { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass' },
+    { id: 'breather', x0: 96, x1: 116, type: 'rest', intensity: 0.2, ink: 'breather' },
+    { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'relay_approach', title: WORLD_NAMES.relayName },
+  ],
   objectives: [
     { id: 'o_supplies', text: 'Scavenge supplies on Market Street' },
-    { id: 'o_relay', text: 'Reach Relay 7 and restore the radio', x: 61.4 },
+    { id: 'o_fuse', text: 'Craft a relay fuse at the garage workbench' },
+    { id: 'o_relay', text: `Restore ${WORLD_NAMES.relayName}` },
   ],
-  goal: { x: 61.4, label: 'Restore radio relay', objective: 'o_relay' },
-  radioLines: [
-    { x: 5, speaker: 'IRIS', text: 'Signal\'s strongest east. Relay 7 is the shack past the overpass.' },
-    { x: 14, speaker: 'REED', text: 'Infected ahead. Keep it quiet — gunfire will pull the whole street.' },
-    { x: 34, speaker: 'MILLER', text: 'Runner under the bridge. Don\'t let it get a scream out.' },
-    { x: 55, speaker: 'IRIS', text: 'Something big near the relay. The band\'s going crazy.' },
-  ],
+  goal: { x: 122.2, needs: 'radio_part', objective: 'o_relay' },
 };

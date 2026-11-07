@@ -1,38 +1,38 @@
 import * as planck from 'planck';
 
-/** Collision categories (bit flags). */
-export const CAT = {
-  GROUND: 0x0001, SURVIVOR: 0x0002, INFECTED: 0x0004, PROP: 0x0008, RAGDOLL: 0x0010, DEBRIS: 0x0020,
-} as const;
+/**
+ * 2D physics in the gameplay plane (physics-tuning): fixed 60 Hz step, named collision
+ * categories with both-sided masks, sane densities (2D kg/m²), sleeping on.
+ * Characters are kinematic gameplay entities (not bodies); physics is used for props,
+ * debris, thrown lures and ragdolls.
+ */
+export const CAT = { GROUND: 1, PROP: 2, RAGDOLL: 4, DEBRIS: 8, LURE: 16 } as const;
+export interface Tag { kind: 'ground' | 'prop' | 'ragdoll' | 'lure'; material: 'concrete' | 'metal' | 'wood' | 'plastic' | 'glass' | 'flesh'; id?: number }
 
-export const GRAVITY = -22;
-export const STEP = 1 / 60;
-
-export interface FixtureTag { kind: 'ground' | 'prop' | 'actor' | 'ragdoll'; id?: number; material?: 'metal' | 'wood' | 'flesh' | 'concrete' }
-
-export function createWorld(levelWidth: number): planck.World {
-  const world = new planck.World({ gravity: { x: 0, y: GRAVITY } });
-  const ground = world.createBody();
-  const tag: FixtureTag = { kind: 'ground', material: 'concrete' };
-  ground.createFixture(new planck.Edge({ x: -20, y: 0 }, { x: levelWidth + 20, y: 0 }), { friction: 0.9, filterCategoryBits: CAT.GROUND, userData: tag });
-  // invisible end walls
-  ground.createFixture(new planck.Edge({ x: -0.5, y: 0 }, { x: -0.5, y: 30 }), { filterCategoryBits: CAT.GROUND, userData: tag });
-  ground.createFixture(new planck.Edge({ x: levelWidth + 0.5, y: 0 }, { x: levelWidth + 0.5, y: 30 }), { filterCategoryBits: CAT.GROUND, userData: tag });
-  return world;
+export function createWorld(x0: number, x1: number): planck.World {
+  const w = new planck.World({ gravity: { x: 0, y: -22 }, allowSleep: true });
+  const g = w.createBody();
+  const tag: Tag = { kind: 'ground', material: 'concrete' };
+  const mask = CAT.PROP | CAT.RAGDOLL | CAT.DEBRIS | CAT.LURE;
+  g.createFixture(new planck.Edge({ x: x0 - 30, y: 0 }, { x: x1 + 30, y: 0 }), { friction: 0.85, filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
+  for (const x of [x0 - 0.3, x1 + 0.3]) g.createFixture(new planck.Edge({ x, y: 0 }, { x, y: 40 }), { filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
+  return w;
 }
 
-export interface RayHit { fixture: planck.Fixture; point: { x: number; y: number }; normal: { x: number; y: number }; fraction: number }
+export interface Hit { tag: Tag; body: planck.Body; point: { x: number; y: number }; normal: { x: number; y: number }; fraction: number }
 
-/** Closest hit along a segment, filtered by category mask and an optional predicate. */
-export function rayCastClosest(world: planck.World, from: { x: number; y: number }, to: { x: number; y: number }, mask: number,
-  accept?: (f: planck.Fixture) => boolean): RayHit | null {
-  let best: RayHit | null = null;
-  world.rayCast(from, to, (fixture, point, normal, fraction) => {
-    if (fixture.isSensor()) return -1;
-    if (!(fixture.getFilterCategoryBits() & mask)) return -1;
-    if (accept && !accept(fixture)) return -1;
-    best = { fixture, point: { x: point.x, y: point.y }, normal: { x: normal.x, y: normal.y }, fraction };
-    return fraction;     // clip ray to this hit → keeps looking for closer ones
+/** Closest non-sensor hit along a segment, filtered by category mask. */
+export function raycast(w: planck.World, a: { x: number; y: number }, b: { x: number; y: number }, mask: number): Hit | null {
+  let best: Hit | null = null;
+  w.rayCast(a, b, (f, p, n, frac) => {
+    if (f.isSensor() || !(f.getFilterCategoryBits() & mask)) return -1;
+    best = { tag: f.getUserData() as Tag, body: f.getBody(), point: { x: p.x, y: p.y }, normal: { x: n.x, y: n.y }, fraction: frac };
+    return frac;
   });
   return best;
+}
+
+/** Give a body a velocity change (mass-independent impulse) at a point. */
+export function kick(b: planck.Body, dvx: number, dvy: number, at?: { x: number; y: number }): void {
+  const m = b.getMass(); b.applyLinearImpulse({ x: dvx * m, y: dvy * m }, at ?? b.getWorldCenter(), true);
 }
