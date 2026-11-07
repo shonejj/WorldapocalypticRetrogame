@@ -9,7 +9,10 @@ import type { LevelDef, Beat, Loot } from './levels/types';
 import { SAVE_VERSION, type SaveData } from './save';
 import { buildWorld, type BuiltWorld } from './worldBuilder';
 import { targetPose, blendPose, zeroPose, type AnimIn, type Pose } from './rig';
-import { CharacterView, infectedLook } from '../art/characters';
+import { CharacterView, infectedLook, type Look } from '../art/characters';
+import { SkinnedView, characterAssetReady } from '../art/skinned';
+type View = CharacterView | SkinnedView;
+const makeView = (look: Look, scale = 1): View => (characterAssetReady() ? new SkinnedView(look, scale) : new CharacterView(look, scale));
 import { pickupMesh } from '../art/props';
 import { createWorld, raycast, kick, CAT, type Tag } from '../physics/world';
 import { createRagdoll, destroyRagdoll, partPivot, shove, type Ragdoll } from '../physics/ragdoll';
@@ -40,7 +43,7 @@ export interface GameEvents extends Record<string, unknown> {
 }
 
 interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'workbench' | 'relay'; loot?: Loot; time: number; noise?: number }
-interface Corpse { actor: Actor; rd: Ragdoll; view: CharacterView; age: number }
+interface Corpse { actor: Actor; rd: Ragdoll; view: View; age: number }
 interface Lure { body: planck.Body; mesh: THREE.Object3D; t: number; broke: boolean }
 
 export class Game implements Host, AIWorld {
@@ -53,7 +56,7 @@ export class Game implements Host, AIWorld {
   readonly squad: Actor[] = []; readonly infected: Actor[] = [];
   readonly stash: Stash;
   readonly brains = new Map<number, Brain>();
-  readonly views = new Map<number, CharacterView>();
+  readonly views = new Map<number, View>();
   private poses = new Map<number, Pose>(); private tgt = zeroPose();
   private corpses: Corpse[] = []; private lures: Lure[] = [];
   private pickups: { id: string; x: number; item: ItemId; qty: number; mesh: THREE.Object3D }[] = [];
@@ -82,7 +85,7 @@ export class Game implements Host, AIWorld {
       const a = new Actor({ x: this.checkpointX - i * 1.1, survivor: def.id });
       const s = save?.party.find((p) => p.id === def.id);
       if (s) Object.assign(a, { hp: s.hp, mag: s.mag, hunger: s.hunger, thirst: s.thirst, bleed: s.bleed, alive: s.alive });
-      const v = new CharacterView(def.look); v.setWeapon(WEAPONS[a.weapon].mesh);
+      const v = makeView(def.look); v.setWeapon(WEAPONS[a.weapon].mesh);
       this.add(a, v); this.squad.push(a);
       if (!a.alive) v.root.visible = false;
     });
@@ -94,7 +97,7 @@ export class Game implements Host, AIWorld {
       if (this.killed.has(d.id)) continue;
       const a = new Actor({ x: d.x, infected: d.type });
       a.levelId = d.id; a.state = d.state; a.facing = d.facing ?? (this.rng.chance(0.5) ? 1 : -1);
-      const v = new CharacterView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);
+      const v = makeView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);
       this.add(a, v); this.infected.push(a); this.brains.set(a.id, new InfectedBrain());
     }
     // interactables
@@ -106,7 +109,7 @@ export class Game implements Host, AIWorld {
     for (const a of [...this.squad, ...this.infected]) this.updateActorView(a, 1);
   }
 
-  private add(a: Actor, v: CharacterView): void { this.r.scene.add(v.root); this.views.set(a.id, v); this.poses.set(a.id, zeroPose()); }
+  private add(a: Actor, v: View): void { this.r.scene.add(v.root); this.views.set(a.id, v); this.poses.set(a.id, zeroPose()); }
 
   // ------------------------------------------------------------------ AIWorld
   get leader(): Actor { return this.squad[this.controlled]; }
@@ -463,6 +466,7 @@ export class Game implements Host, AIWorld {
     targetPose(ai, this.tgt);
     blendPose(pose, this.tgt, !sq && a.state === 'waking' ? 3 : 18, dt);
     if (sq) v.setWeapon(a.meleeT >= 0 ? 'pipe' : w.mesh);
+    if (v instanceof SkinnedView) v.animate(ai, dt);
     v.pose(pose, a.x, 0, a.facing, sq && !a.drawn && a.drawT < 0.3 && a.meleeT < 0);
     v.flash(a.hurtT * 0.6);
   }

@@ -45,3 +45,6 @@ How it is structured, and which game-dev skill drove each part: [docs/ARCHITECTU
 
 ## License
 MIT — see [LICENSE](LICENSE).
+
+### Third-party assets
+- Character body and animations: **Universal Animation Library** by [Quaternius](https://quaternius.com) — CC0 1.0 (`public/models/LICENSE-Quaternius-UAL-CC0.txt`). Thank you, Quaternius.

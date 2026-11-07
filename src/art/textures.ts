@@ -119,7 +119,7 @@ export function plaster(tint = '#8a8170', seed = 3): PbrMaps {
     const N = 512, f = new Field(N), base = hex(tint), brickC = hex('#6b3f33');
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const n = tfbm(x / 48, y / 48, N / 48, 5, seed), peel = tfbm(x / 120, y / 120, 4, 4, seed + 7);
-      const exposed = peel > 0.7;
+      const exposed = peel > 0.77;
       const streak = Math.max(0, tnoise(x / 5, y / 400, N / 5, seed + 13) - 0.55) * 2 * (y / N);
       if (exposed) {
         const by = Math.floor(y / 24), bx = Math.floor((x + (by % 2) * 24) / 48), gap = y % 24 < 3 || (x + (by % 2) * 24) % 48 < 3;
