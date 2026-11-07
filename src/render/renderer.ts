@@ -13,6 +13,30 @@ export const QUALITY_PRESETS: Record<'high' | 'medium' | 'low', Quality> = {
   low: { dpr: 1.0, pixel: -1, bloom: false, shadows: false, reflections: false },
 };
 
+/**
+ * Depth of field (production bible gap #14): blur grows with distance from the focal plane — the
+ * lane at z = 0 — so the near foreground and the far city soften while the street stays sharp.
+ * 12-tap disc at the low pixel-art resolution: cheap enough for phones.
+ */
+const DofShader = {
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uNear: { value: 0.3 }, uFar: { value: 900 }, uFocus: { value: 10 }, uTexel: { value: new THREE.Vector2(1 / 640, 1 / 360) }, uStrength: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uFocus; uniform vec2 uTexel; uniform float uStrength; varying vec2 vUv;
+    float viewZ(vec2 uv){ float d = texture2D(tDepth, uv).x; return (uNear * uFar) / ((uFar - uNear) * d - uFar); }
+    void main(){
+      float z = -viewZ(vUv);
+      float nearB = smoothstep(uFocus - 3.2, uFocus - 7.5, z);            // between lens and lane
+      float farB = smoothstep(uFocus + 14.0, uFocus + 45.0, z) * 0.75;    // the city behind the gaps
+      float coc = max(nearB, farB) * 2.6 * uStrength;
+      vec4 c = texture2D(tDiffuse, vUv);
+      if (coc < 0.15) { gl_FragColor = c; return; }
+      vec4 acc = c; float n = 1.0;
+      for (int i = 0; i < 12; i++) { float a = float(i) * 2.39996; float r = coc * sqrt((float(i) + 0.5) / 12.0);
+        acc += texture2D(tDiffuse, vUv + vec2(cos(a), sin(a)) * r * uTexel); n += 1.0; }
+      gl_FragColor = acc / n;
+    }`,
+};
+
 /** Colour grade + vignette + grain + damage tint, applied before OutputPass (linear space). */
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uHurt: { value: 0 }, uVignette: { value: 0.5 }, uGrain: { value: 0.035 } },
@@ -43,6 +67,7 @@ export class Renderer {
   private composer!: EffectComposer;
   private bloom!: UnrealBloomPass;
   readonly grade = new ShaderPass(GradeShader);
+  readonly dof = new ShaderPass(DofShader);
   quality: Quality = QUALITY_PRESETS.high;
   /** Camera target and additive shake offset (camera-systems: shake rides on top of follow). */
   focus = new THREE.Vector3(0, 1.9, 0);
@@ -82,11 +107,14 @@ export class Renderer {
 
   private buildComposer(): void {
     this.composer?.dispose();
-    this.composer = new EffectComposer(this.renderer);
+    // the scene target carries a depth texture for the depth-of-field pass
+    const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, depthTexture: new THREE.DepthTexture(1, 1) });
+    this.composer = new EffectComposer(this.renderer, rt);
     // Pixel art = render the scene at ~360 rows and let CSS scale it up with nearest-neighbour
     // (style.css: image-rendering: pixelated). One scene render at a fraction of the pixels — the
     // cheapest path on phones — instead of RenderPixelatedPass (full-res beauty + normals pass).
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(this.dof);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.32, 0.35, 0.92)   // subtle: glow on real light sources only, no flare blobs;
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
@@ -132,6 +160,9 @@ export class Renderer {
     this.camera.lookAt(f.x + s.x * 0.5, f.y + this.lift * 0.35 + s.y * 0.5, 0);
     this.camera.rotation.z += s.z;
     this.grade.uniforms.uTime.value = time % 100;
+    const u = this.dof.uniforms, rb = this.composer.readBuffer;
+    u.tDepth.value = rb.depthTexture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
+    u.uFocus.value = this.camera.position.z; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
     this.composer.render();
   }
 

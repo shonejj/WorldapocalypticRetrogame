@@ -129,7 +129,7 @@ export class SkinnedView {
     this.model = cloneSkinned(KIT!.outfit[sex].scene);
     this.model.traverse((o) => { if ((o as THREE.Bone).isBone) this.bone[o.name] = o as THREE.Bone; });
     const inf = !!look.infected, skin = inf ? INFECTED_SKIN.clone().lerp(new THREE.Color(look.skin), 0.35) : new THREE.Color(look.skin);
-    const dirt = (c: number) => (inf ? new THREE.Color(c).lerp(new THREE.Color(0x3a3530), 0.45) : new THREE.Color(c));
+    const dirt = (c: number) => (inf ? new THREE.Color(c).lerp(new THREE.Color(0x7a6e60), 0.4) : new THREE.Color(c));   // soiled, faded — still readable at night
     // clothes: tint each outfit part
     this.model.traverse((o) => {
       const m = o as THREE.SkinnedMesh; if (!m.isSkinnedMesh) return;

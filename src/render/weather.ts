@@ -48,7 +48,7 @@ export class Rain {
 
   constructor(scene: THREE.Scene, count = 1700) {
     this.addLayer(scene, count, -14, 2, 0.022, 0x9fb8c8, 0.17);        // haze → lane
-    this.addLayer(scene, Math.round(count * 0.16), 2, 8.6, 0.05, 0xc4d6e2, 0.22);   // between the lens and the lane
+    this.addLayer(scene, Math.round(count * 0.12), 2, 8.6, 0.045, 0xc4d6e2, 0.15);   // between the lens and the lane
     // impact rings: one instanced quad field
     const n = 700, g = new THREE.InstancedBufferGeometry();
     g.copy(new THREE.PlaneGeometry(2, 2) as unknown as THREE.InstancedBufferGeometry);
