@@ -1,0 +1,18 @@
+file,title,author,license,source,notes
+models/pistol.glb,Pistol,Quaternius,CC0-1.0,https://poly.pizza/m/52kQzphmeF,anims=
+models/rifle.glb,Assault Rifle,Quaternius,CC0-1.0,https://poly.pizza/m/K2lXTYFSLC,anims=
+models/shotgun.glb,Shotgun,Quaternius,CC0-1.0,https://poly.pizza/m/DcNE0HVdW8,anims=
+models/props/covered_car.glb,Covered Car,Poly Haven (MP),CC0-1.0,https://polyhaven.com/a/covered_car,"simplified, textures 1024px WebP"
+models/props/barrel.glb,Barrel_01,Poly Haven (Jorge Camacho),CC0-1.0,https://polyhaven.com/a/Barrel_01,"simplified, textures 512px WebP"
+models/props/wooden_crate.glb,Wooden Crate 01,Poly Haven (James Ray Cock),CC0-1.0,https://polyhaven.com/a/wooden_crate_01,"simplified, textures 512px WebP"
+models/props/cardboard_box.glb,Cardboard Box 01,Poly Haven (Rahul Chaudhary),CC0-1.0,https://polyhaven.com/a/cardboard_box_01,"simplified, textures 512px WebP"
+models/props/trashbag.glb,Trashbag,Poly Haven (Benny Weimer),CC0-1.0,https://polyhaven.com/a/trashbag,"simplified, textures 512px WebP"
+models/props/tyre.glb,Old Tyre,Poly Haven (MP),CC0-1.0,https://polyhaven.com/a/old_tyre,"simplified, textures 512px WebP"
+models/props/hanging_lamp.glb,Hanging Industrial Lamp,Poly Haven (Kuutti Siitonen),CC0-1.0,https://polyhaven.com/a/hanging_industrial_lamp,"simplified, textures 512px WebP"
+models/props/aircon_unit.glb,Exterior Aircon Unit,Poly Haven (Monsta3D),CC0-1.0,https://polyhaven.com/a/exterior_aircon_unit,"simplified, textures 512px WebP"
+models/props/plastic_crate.glb,Plastic Crate 02,Poly Haven (Fabi_G),CC0-1.0,https://polyhaven.com/a/plastic_crate_02,"simplified, textures 512px WebP"
+models/props/generator.glb,Portable Generator,Poly Haven (James Ray Cock),CC0-1.0,https://polyhaven.com/a/portable_generator,"simplified, textures 512px WebP"
+models/props/jerrycan.glb,Metal Jerrycan Green,Poly Haven (Ulan Cabanilla),CC0-1.0,https://polyhaven.com/a/metal_jerrycan_green,"simplified, textures 512px WebP"
+models/props/military_crate.glb,Old Military Crate,Poly Haven (Jack Mava),CC0-1.0,https://polyhaven.com/a/old_military_crate,"simplified, textures 512px WebP"
+models/props/road_barrier.glb,Concrete Road Barrier 02,Poly Haven (Amal Kumar),CC0-1.0,https://polyhaven.com/a/concrete_road_barrier_02,"simplified, textures 512px WebP"
+models/props/power_box.glb,Power Box 01,"Poly Haven (Rico Cilliers, Yann Kervran)",CC0-1.0,https://polyhaven.com/a/power_box_01,"simplified, textures 512px WebP"

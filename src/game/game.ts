@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WetReflections } from '../render/wet';
+import { FACADE_Z } from '../art/buildings';
 import * as planck from 'planck';
 import { Actor, idle, type Host, type Intent } from './actor';
 import { InfectedBrain, PlayerBrain, SquadBrain, type AIWorld, type Brain } from './brains';
@@ -161,6 +162,7 @@ export class Game implements Host, AIWorld {
     const m = v.muzzle() ?? new THREE.Vector3(a.x + a.facing * 0.8, 1.35, 0.15);
     audio.play(w.sfx, a.x, a === this.leader ? 1 : 0.75);
     this.fx.muzzle(m, w.pellets > 1 ? 1.5 : 1.0); this.fx.casing(a.x + a.facing * 0.15, m.y, a.facing, w.pellets > 1);
+    this.fx.puff(m.x, m.y, m.z, { size: w.pellets > 1 ? 0.35 : 0.22, vx: a.facing * 0.4, vy: 0.35, life: 1.1, alpha: 0.28 });
     this.lights.transient.push({ x: m.x, y: m.y, z: m.z + 0.4, color: 0xffc070, intensity: 18, distance: 9, t: 0.06 });
     this.noise(a.x, w.noise, null);
     if (a === this.leader) { this.lastShot = this.time; this.cam.addTrauma(w.trauma); }
@@ -465,8 +467,17 @@ export class Game implements Host, AIWorld {
     if (this.built.beacon) (this.built.beacon as THREE.Mesh).visible = Math.sin(this.time * 3) > 0;
     this.built.blinkers.forEach((b, i) => { b.material.opacity = Math.sin(this.time * 2.2 + i * 1.7) > 0.2 ? 0.95 : 0.12; });
     this.wet.update(this.cam.x, this.time);
+    this.ambientFx(dt);
     let i = 0; for (const m of this.lootSpots.values()) { const gl = m.getObjectByName('glint') as THREE.Sprite | undefined; if (gl) { const t = (this.time * 0.7 + i++ * 0.37) % 2.4; gl.material.opacity = t < 0.5 ? Math.sin((t / 0.5) * Math.PI) * 0.9 : 0; } }
     audio.setIntensity(this.intensity);
+  }
+
+  /** Ambient life near the camera: manhole steam, awning drips, splashes under running feet. */
+  private ambientFx(dt: number): void {
+    const cx = this.cam.x, hw = this.r.halfWidth + 2;
+    for (let x = Math.ceil((cx - hw) / 23) * 23; x < cx + hw; x += 23) if (Math.random() < dt * 3) this.fx.puff(x + 0.3, 0.05, 3.2, { size: 0.5, vx: -0.2, vy: 0.55, life: 2.6, grow: 0.5, alpha: 0.14, color: 0xb8c4cc });
+    if (this.rain.enabled) for (const b of this.level.buildings) if ((b.kind === 'store' || b.kind === 'pharmacy') && b.x < cx + hw && b.x + b.w > cx - hw && Math.random() < dt * 9) this.fx.drip(b.x + 0.6 + Math.random() * (b.w - 1.2), 3.2, FACADE_Z + 1.25);
+    for (const s of this.squad) if (s.alive && s.running && Math.random() < dt * 6) this.fx.splash(s.x, 0.1);
   }
 
   private updateActorView(a: Actor, dt: number): void {

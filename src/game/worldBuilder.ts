@@ -5,6 +5,7 @@ import type { LightSpot } from '../art/kit';
 import { building, relay } from '../art/buildings';
 import { ground, streetLamp, powerLine, chainFence, billboard, overpass, skyline, sky, Z } from '../art/street';
 import { backdrop, foreground } from '../art/backdrop';
+import { asset } from '../art/assets';
 import { FACADE_Z } from '../art/buildings';
 import { prop, type Prop } from '../art/props';
 import { vehicle } from '../art/vehicles';
@@ -34,6 +35,10 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
   for (const v of L.vehicles) { const m = vehicle(v.kind, hashString(`v${v.x}`)); m.group.position.set(v.x, -0.0, v.z ?? -2.75); m.group.rotation.y = (v.flip ? Math.PI : 0) + R.range(-0.04, 0.04); g.add(m.group); }
   // dark foreground overgrowth along the near road edge: frames the bottom of the screen (reference composition)
   g.add(foreground(L.x0, L.x1, L.seed));
+  // tarp-covered cars abandoned in the lots behind the fences (CC0 scan)
+  for (let x = L.x0 + 9; x < L.x1; x += R.range(24, 40)) { const c = asset('covered_car', 4.3, 'length'); if (c) { c.position.set(x, 0, R.range(-7.5, -10)); c.rotation.y = R.range(-0.3, 0.3); g.add(c); } }
+  // manhole covers (Game puffs steam from them every 23 m)
+  const mh = new Batch(); for (let x = Math.ceil((L.x0 - 20) / 23) * 23; x < L.x1 + 20; x += 23) mh.add(M.metal('#2c3134'), cyl(0.42, 0.42, 0.04, x + 0.3, -0.13, 3.2, 16)); g.add(mh.build({ castShadow: false }));
   g.add(grass([[L.x0 - 20, L.x1 + 20, FACADE_Z, FACADE_Z + 0.6, 0], [L.x0 - 20, L.x1 + 20, 1.0, 1.9, -0.12], [L.x0 - 20, L.x1 + 20, 6, 8.5, -0.16], [L.x0 - 20, L.x1 + 20, -11, FACADE_Z - 0.2, 0]], 0.9, L.seed));
 
   // workbench in front of the garage
@@ -51,6 +56,7 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
   wb.add(M.dark(), cyl(0.008, 0.008, 1.2, wx - 0.1, 2.9, -1.6, 4), cyl(0.12, 0.2, 0.14, wx - 0.1, 2.28, -1.6, 10));
   wb.add(M.emissive(0xffe2b0, 4), cyl(0.1, 0.1, 0.02, wx - 0.1, 2.2, -1.6, 10));
   lights.push({ x: wx - 0.1, y: 2.1, z: -1.2, color: 0xffd9a0, intensity: 6, distance: 6 });
+  for (const [n, dx, dz, ry] of [['generator', 1.55, -1.5, -0.4], ['jerrycan', -1.25, -1.35, 0.5], ['plastic_crate', 2.3, -1.9, 0.1]] as const) { const a = asset(n); if (a) { a.position.set(wx + dx, 0, dz); a.rotation.y = ry; g.add(a); } }
   const workbench = wb.build(); g.add(workbench);
   lights.push({ x: wx + 0.6, y: 1.4, z: -1.2, color: 0xffb066, intensity: 4, distance: 4, flicker: true });
 

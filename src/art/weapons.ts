@@ -1,10 +1,20 @@
 import * as THREE from 'three';
 import { M } from './kit';
+import { asset } from './assets';
 
 export type WeaponKind = 'pistol' | 'shotgun' | 'rifle' | 'pipe';
 
 /** Weapons are modelled along +x from the grip (origin). Child "muzzle" marks the barrel tip. */
+const SCANNED: Partial<Record<WeaponKind, [number, number]>> = { pistol: [0.24, 0.27], rifle: [0.9, 0.3], shotgun: [0.98, 0.3] };   // length m, grip from the back
+
 export function weaponMesh(kind: WeaponKind): THREE.Group {
+  const sc = SCANNED[kind], m = sc && asset(kind as 'pistol' | 'rifle' | 'shotgun', sc[0], 'length');
+  if (sc && m) {                    // CC0 Quaternius model: muzzle +x, grip moved to the origin
+    const g = new THREE.Group(), h = new THREE.Box3().setFromObject(m).getSize(new THREE.Vector3()).y;
+    m.position.set(sc[0] * (0.5 - sc[1]), -h * 0.6, 0); g.add(m);
+    const muzzle = new THREE.Object3D(); muzzle.name = 'muzzle'; muzzle.position.set(sc[0] * (1 - sc[1]), 0.02, 0); g.add(muzzle);
+    return g;
+  }
   const g = new THREE.Group(), steel = M.metal('#2b2f33'), poly = M.paint(0x2a2c2a, 0.7), wood = M.wood('#5a3a22');
   const b = (w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, rz = 0) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, 0); m.rotation.z = rz; m.castShadow = true; g.add(m); };
   let tip = 0.4;

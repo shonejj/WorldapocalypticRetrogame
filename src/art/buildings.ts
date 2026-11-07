@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Rng } from '../core/math';
 import { Batch, M, box, cyl, plane, type LightSpot } from './kit';
 import * as TX from './textures';
+import { asset } from './assets';
 
 /** Street layout constants (metres). Gameplay plane is z = 0; facades stand behind it. */
 export const FACADE_Z = -4.2;
@@ -66,8 +67,10 @@ export function building(s: BuildingSpec): Built {
     B.add(dark, box(0.08, wh, 0.12, wx - ww / 2, wy, zf + 0.04), box(0.08, wh, 0.12, wx + ww / 2, wy, zf + 0.04));
     B.add(ruin ? dark : M.window(lit ? (R.chance(0.2) ? 'tv' : 'lit') : 'dark', R.int(1, 6)), plane(ww, wh, wx, wy, zf + 0.012));
     B.add(dark, box(0.04, wh, 0.03, wx, wy, zf + 0.03), box(ww, 0.04, 0.03, wx, wy + 0.1, zf + 0.03));   // mullions
-    if (R.chance(0.2) && !ruin) B.add(M.paint(0x9a9a90, 0.7), box(0.7, 0.5, 0.5, wx + 0.9, wy - 0.4, zf + 0.25));   // AC unit
-    if (lit && R.chance(0.35)) lights.push({ x: wx, y: wy, z: zf + 1.2, color: 0xffc27a, intensity: 2, distance: 5 });
+    if (R.chance(0.2) && !ruin) {   // AC unit: CC0 scan when available
+      const ac = asset('aircon_unit', 0.55); if (ac) { ac.position.set(wx + 0.95, wy - 0.68, zf + 0.05); extras.push(ac); }
+      else B.add(M.paint(0x9a9a90, 0.7), box(0.7, 0.5, 0.5, wx + 0.9, wy - 0.4, zf + 0.25));
+    }
   }
   // drainpipe
   if (R.chance(0.7)) B.add(metal, cyl(0.06, 0.06, H, x1 - 0.25, H / 2, zf + 0.1, 8));
@@ -155,7 +158,7 @@ export function building(s: BuildingSpec): Built {
     if (doorX !== undefined && Math.abs(px - doorX) < 1.1) continue;
     B.add(M.poster(R.int(0, 8)), plane(pw, pw * 1.3, px, R.range(1.2, 2.2), zf + 0.03 + i * 0.002));
   }
-  if (R.chance(0.5)) B.add(M.metal('#56605a'), box(0.55, 0.75, 0.22, x1 - 0.8, 1.5, zf + 0.12));
+  if (R.chance(0.5)) { const pb = asset('power_box', 0.9); if (pb) { pb.position.set(x1 - 0.8, 1.0, zf + 0.02); extras.push(pb); } else B.add(M.metal('#56605a'), box(0.55, 0.75, 0.22, x1 - 0.8, 1.5, zf + 0.12)); }
   // ---- overgrowth: thick ivy curtains draping from the roof line (reference silhouette), weeds at the base
   const ivyN = Math.ceil(s.w / 2.6);
   for (let i = 0; i < ivyN; i++) {
