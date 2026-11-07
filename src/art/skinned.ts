@@ -103,7 +103,8 @@ const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE
  * from local quaternions up to the model root — never from world matrices, which carry the root's
  * facing turn (±90°) and would twist the body sideways and flip every time the actor turns.
  */
-function rotateModelSpace(b: THREE.Object3D, model: THREE.Object3D, axis: THREE.Vector3, ang: number): void {
+export function rotateModelSpace(b: THREE.Object3D, model: THREE.Object3D, axis: THREE.Vector3, ang: number, undo: Map<THREE.Object3D, THREE.Quaternion>): void {
+  if (!undo.has(b)) undo.set(b, b.quaternion.clone());   // pose before any offset this frame
   _q2.identity();
   for (let o = b.parent; o && o !== model; o = o.parent) _q2.premultiply(o.quaternion);   // parent rotation in model space
   _q.setFromAxisAngle(axis, ang);
@@ -128,6 +129,7 @@ export class SkinnedView {
   private rag: { w0: Map<THREE.Bone, THREE.Quaternion>; a0: Map<Part, number>; hips0: THREE.Vector3; piv0: THREE.Vector2 } | null = null;
   ragdolled = false;
   private phase: number;
+  private undo = new Map<THREE.Object3D, THREE.Quaternion>();
 
   constructor(readonly look: Look, readonly scale = 1) {
     this.phase = new Rng(look.seed * 7 + 3).next();
@@ -252,18 +254,23 @@ export class SkinnedView {
     else if (!inf && i.drawn && i.stance !== 'none') this.play('Pistol_Idle_Loop', 'upper', 0.25);
     else this.play(lowerName, 'upper', 0.25, this.lowerA?.timeScale ?? 1, lowerName === 'Death01');
     if (this.upperA && this.lowerA && this.upperName === this.lowerName) this.upperA.time = this.lowerA.time;   // stay in step
+    // undo last frame's procedural offsets first: three's PropertyMixer skips writing a bone whose sampled
+    // value did not change (e.g. Sprint_Loop's constant spine), so an offset added after the mixer would
+    // otherwise pile up every frame — the 'somersault' while running
+    for (const [b, q] of this.undo) b.quaternion.copy(q);
+    this.undo.clear();
     this.mixer.update(dt);
 
     // ---- procedural layer: infected hunch + reaching arms; survivors lean when sprinting
     const spine = this.b('DEF-spine001'), neck = this.b('DEF-neck');
     if (inf && !i.dormant) {
       const hunch = i.gait === 'sprint' ? 0.35 : i.gait === 'brute' ? 0.25 : 0.42;
-      rotateModelSpace(spine, this.model, ARM_UP, hunch); rotateModelSpace(neck, this.model, ARM_UP, -0.25 + Math.sin(i.t * 2.3) * 0.08);
+      rotateModelSpace(spine, this.model, ARM_UP, hunch, this.undo); rotateModelSpace(neck, this.model, ARM_UP, -0.25 + Math.sin(i.t * 2.3) * 0.08, this.undo);
       if (i.attack <= 0) {
         const reach = i.run ? -1.25 : -0.35 + Math.sin(i.t * 1.7) * 0.08;
-        for (const s of ['L', 'R'] as const) rotateModelSpace(this.b(`DEF-upper_arm${s}`), this.model, ARM_UP, reach + (s === 'L' ? Math.sin(i.t * 2) * 0.1 : 0));
+        for (const s of ['L', 'R'] as const) rotateModelSpace(this.b(`DEF-upper_arm${s}`), this.model, ARM_UP, reach + (s === 'L' ? Math.sin(i.t * 2) * 0.1 : 0), this.undo);
       }
-    } else if (!inf && this.lowerName === 'Sprint_Loop') rotateModelSpace(spine, this.model, ARM_UP, 0.12);
+    }
 
     const holstered = !i.drawn && i.melee <= 0;
     if (this.weapon) { const p = holstered ? this.slung : this.weaponMount; if (this.weapon.parent !== p) p.add(this.weapon); }
