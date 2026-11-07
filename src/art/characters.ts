@@ -21,6 +21,8 @@ export interface Look {
   idle?: string; walk?: string; tempo?: number;
   /** body template for skinned characters */
   sex?: 'm' | 'f';
+  /** infected body type: drives mutations (bone proportions, growths) */
+  mutant?: 'common' | 'runner' | 'brute' | 'crawler' | 'screamer' | 'hound';
 }
 
 const capsule = (r: number, len: number, mat: THREE.Material, y: number, sx = 1, sz = 1) => {
@@ -245,14 +247,14 @@ export const LOOKS = {
 
 const INFECTED_SKIN = [0xa8908a, 0x9c8682, 0xb39a90, 0x8f8480, 0x9a948a];   // bloodless grey-pink (reference)
 const INFECTED_CLOTH = [0x4a4238, 0x3a4450, 0x6a3a32, 0x3e4a3a, 0x6e6658, 0x2c2c30, 0x7a6e5a];
-export function infectedLook(kind: 'common' | 'runner' | 'brute', seed: number): Look {
+export function infectedLook(kind: NonNullable<Look['mutant']>, seed: number): Look {
   const R = new Rng(seed);
   return {
-    seed, infected: true, skin: R.pick(INFECTED_SKIN), hair: R.pick([0x1a1612, 0x3a2a20, 0x4a4438]),
-    hairStyle: kind === 'brute' ? 'bald' : R.pick(['messy', 'short', 'long', 'bald'] as const),
+    seed, infected: true, mutant: kind, skin: R.pick(INFECTED_SKIN), hair: R.pick([0x1a1612, 0x3a2a20, 0x4a4438]),
+    hairStyle: kind === 'brute' || kind === 'screamer' || kind === 'hound' ? 'bald' : R.pick(['messy', 'short', 'long', 'bald'] as const),
     headwear: kind === 'common' && R.chance(0.25) ? 'hood' : undefined,
     top: R.pick(INFECTED_CLOTH), topStyle: kind === 'brute' ? 'tshirt' : R.pick(['jacket', 'hoodie', 'tshirt', 'coat'] as const),
     shirt: kind === 'brute' ? 0x7a7466 : R.pick(INFECTED_CLOTH), pants: R.pick([0x2a2e38, 0x3a3428, 0x30302e]), boots: 0x241c16,
-    build: kind === 'brute' ? 1.55 : kind === 'runner' ? 0.82 : R.range(0.92, 1.08),
+    build: kind === 'brute' ? 1.55 : kind === 'runner' || kind === 'screamer' ? 0.86 : R.range(0.92, 1.08),
   };
 }

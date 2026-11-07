@@ -69,11 +69,15 @@ export const SURVIVORS: SurvivorDef[] = [
 ];
 
 // ---------------------------------------------------------------- infected
-export type InfectedType = 'common' | 'runner' | 'brute';
-export interface InfectedDef { name: string; hp: number; walk: number; chase: number; damage: number; reach: number; windup: number; cooldown: number; sight: number; hearing: number; scale: number; gait: Gait; poise: number; density: number }
+export type InfectedType = 'common' | 'runner' | 'brute' | 'crawler' | 'screamer' | 'hound';
+export interface InfectedDef { name: string; hp: number; walk: number; chase: number; damage: number; reach: number; windup: number; cooldown: number; sight: number; hearing: number; scale: number; gait: Gait; poise: number; density: number;
+  /** standing height as a fraction of a person (crawlers and hounds are low targets) */ height?: number }
 export const INFECTED: Record<InfectedType, InfectedDef> = {
   common: { name: 'Infected', hp: 70, walk: 0.7, chase: 1.75, damage: 12, reach: 0.95, windup: 0.55, cooldown: 1.1, sight: 9, hearing: 1, scale: 1, gait: 'shamble', poise: 1, density: 1 },
   runner: { name: 'Runner', hp: 45, walk: 1.0, chase: 4.8, damage: 9, reach: 0.9, windup: 0.38, cooldown: 0.8, sight: 12, hearing: 1.3, scale: 0.97, gait: 'sprint', poise: 0.8, density: 0.8 },
+  crawler: { name: 'Crawler', hp: 40, walk: 0.5, chase: 1.5, damage: 11, reach: 0.95, windup: 0.45, cooldown: 1.0, sight: 6, hearing: 1.3, scale: 1, gait: 'crawl', poise: 0.9, density: 0.7, height: 0.4 },
+  screamer: { name: 'Screamer', hp: 55, walk: 0.55, chase: 0.9, damage: 8, reach: 0.9, windup: 0.5, cooldown: 1.2, sight: 13, hearing: 1.5, scale: 1.04, gait: 'scream', poise: 0.9, density: 0.85 },
+  hound: { name: 'Hound', hp: 50, walk: 1.3, chase: 5.8, damage: 14, reach: 1.15, windup: 0.32, cooldown: 0.7, sight: 11, hearing: 1.7, scale: 1, gait: 'hound', poise: 0.7, density: 0.9, height: 0.5 },
   brute: { name: 'Bloated Brute', hp: 520, walk: 0.6, chase: 1.5, damage: 32, reach: 1.4, windup: 0.95, cooldown: 1.8, sight: 8, hearing: 0.8, scale: 1.35, gait: 'brute', poise: 0.2, density: 1.6 },
 };
 

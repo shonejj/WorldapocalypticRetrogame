@@ -101,7 +101,7 @@ export class Game implements Host, AIWorld {
       if (this.killed.has(d.id)) continue;
       const a = new Actor({ x: d.x, infected: d.type });
       a.levelId = d.id; a.state = d.state; a.facing = d.facing ?? (this.rng.chance(0.5) ? 1 : -1);
-      const v = makeView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);
+      const v = makeView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);   // each type has its own mutated body
       this.add(a, v); this.infected.push(a); this.brains.set(a.id, new InfectedBrain());
     }
     // interactables
@@ -126,7 +126,7 @@ export class Game implements Host, AIWorld {
   medical(): number { return this.stash.count('medkit') + this.stash.count('bandage'); }
   ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.ammo(t) : 0; }
   weaponsFree(): boolean { return this.alert || this.time - this.lastShot < 6; }
-  cry(z: Actor): void { this.sfx(z.type === 'runner' ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'runner' ? 1 : 0.8); this.noise(z.x, z.type === 'runner' ? NOISE.shout : 7, z); }
+  cry(z: Actor): void { const loud = z.type === 'runner' || z.type === 'screamer' || z.type === 'hound'; this.sfx(loud ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, loud ? 1 : 0.8); this.noise(z.x, z.type === 'screamer' ? NOISE.shout * 1.6 : loud ? NOISE.shout : 7, z, true); }
   groan(z: Actor): void { this.sfx(z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'brute' ? 0.7 : 0.55); }
 
   // ------------------------------------------------------------------ Host
@@ -492,6 +492,7 @@ export class Game implements Host, AIWorld {
       melee: a.meleeT >= 0 ? a.meleeT / MELEE_TIME : 0, reload: a.reloadT >= 0 ? a.reloadT / w.reload : 0, heal: a.healT >= 0 ? 1 : 0,
       hurt: a.hurtT, attack: a.attackT >= 0 ? a.attackT / a.infected!.windup : 0, throwT: a.throwT >= 0 ? a.throwT / 0.6 : 0,
       dormant: !sq && a.state === 'dormant', drawn: a.drawn || a.drawT > 0.3,
+      scream: a.screamT,
       task: a === this.leader && this.using ? (this.using.kind === 'relay' ? 'interact' : 'search') : null,
     };
     targetPose(ai, this.tgt);

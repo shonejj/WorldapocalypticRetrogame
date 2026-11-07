@@ -62,7 +62,7 @@ export const JOINTS: { parent: Part; child: Part; lo: number; hi: number }[] = [
 
 // ---------------------------------------------------------------- procedural animation
 export type Stance = 'none' | 'pistol' | 'long';
-export type Gait = 'survivor' | 'shamble' | 'sprint' | 'brute';
+export type Gait = 'survivor' | 'shamble' | 'sprint' | 'brute' | 'crawl' | 'scream' | 'hound';
 export interface AnimIn {
   t: number; phase: number; speed: number; run: boolean; crouch: boolean;
   gait: Gait; stance: Stance; aim: number;       // 0 lowered … 1 fully aimed (blended)
@@ -70,6 +70,8 @@ export interface AnimIn {
   dormant: boolean; drawn: boolean;
   /** contextual task the actor is doing (skinned bodies pick a matching clip) */
   task?: 'search' | 'interact' | null;
+  /** screamer: seconds left of the current scream */
+  scream?: number;
 }
 
 export function targetPose(i: AnimIn, p: Pose = zeroPose()): Pose {

@@ -60,7 +60,9 @@ export class Actor {
   }
 
   get w() { return WEAPONS[this.weapon]; }
-  get height() { return (this.state === 'dormant' && this.team === 'infected' ? 0.7 : this.crouching ? 1.2 : 1.8) * this.scale; }
+  get height() { return (this.state === 'dormant' && this.team === 'infected' ? 0.7 : this.crouching ? 1.2 : 1.8 * (this.infected?.height ?? 1)) * this.scale; }
+  /** screamer: time left of the current scream (drives its animation) */
+  screamT = 0;
   get busy() { return this.reloadT >= 0 || this.meleeT >= 0 || this.healT >= 0 || this.throwT >= 0 || this.stun > 0 || this.drawT >= 0; }
   /** 0..1 how "aimed" the survivor is (animation blend + accuracy). */
   get aimed() { return this.team === 'squad' && this.drawn && this.reloadT < 0 && this.healT < 0 && this.aimT > 0; }

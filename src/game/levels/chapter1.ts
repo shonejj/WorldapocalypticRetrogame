@@ -61,12 +61,13 @@ export const CHAPTER1: LevelDef = {
     { id: 'z1', x: 14, type: 'common', state: 'idle', facing: 1 },
     // pharmacy: dormant pair inside the glow → lure with a bottle or sneak in the dark
     { id: 'z2', x: 29.5, type: 'common', state: 'dormant' }, { id: 'z3', x: 31.5, type: 'common', state: 'dormant', facing: -1 },
-    { id: 'z4', x: 37, type: 'common', state: 'wander' },
+    { id: 'z4', x: 37, type: 'crawler', state: 'wander' },
+    { id: 'z19', x: 21.5, type: 'crawler', state: 'idle', facing: -1 },   // under the hatchback
     // overpass gauntlet: crowd + runners; gunfire here pulls everyone
     { id: 'z5', x: 66, type: 'common', state: 'wander' }, { id: 'z6', x: 69, type: 'common', state: 'idle', facing: -1 }, { id: 'z7', x: 71, type: 'runner', state: 'idle', facing: -1 },
-    { id: 'z8', x: 75, type: 'common', state: 'dormant' }, { id: 'z9', x: 78, type: 'common', state: 'wander' }, { id: 'z10', x: 81, type: 'common', state: 'idle' },
-    { id: 'z11', x: 84, type: 'runner', state: 'wander' }, { id: 'z12', x: 87, type: 'common', state: 'dormant' }, { id: 'z13', x: 93, type: 'common', state: 'wander' },
-    { id: 'z14', x: 106, type: 'common', state: 'idle', facing: -1 }, { id: 'z15', x: 110, type: 'runner', state: 'dormant' },
+    { id: 'z8', x: 75, type: 'common', state: 'dormant' }, { id: 'z20', x: 79.5, type: 'screamer', state: 'idle', facing: -1 }, { id: 'z9', x: 78, type: 'common', state: 'wander' }, { id: 'z10', x: 81, type: 'common', state: 'idle' },
+    { id: 'z11', x: 84, type: 'hound', state: 'wander' }, { id: 'z12', x: 87, type: 'common', state: 'dormant' }, { id: 'z13', x: 93, type: 'common', state: 'wander' },
+    { id: 'z14', x: 106, type: 'common', state: 'idle', facing: -1 }, { id: 'z15', x: 110, type: 'hound', state: 'dormant' }, { id: 'z21', x: 103, type: 'crawler', state: 'idle' },
     // climax at the relay
     { id: 'z16', x: 127, type: 'brute', state: 'idle', facing: -1 }, { id: 'z17', x: 124, type: 'common', state: 'idle' }, { id: 'z18', x: 131, type: 'common', state: 'wander' },
   ],
