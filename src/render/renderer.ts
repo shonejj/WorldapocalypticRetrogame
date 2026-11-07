@@ -87,7 +87,7 @@ export class Renderer {
       px.normalEdgeStrength = 0.18; px.depthEdgeStrength = 0.45;          // dark outlines on silhouettes, soft inner edges
       this.composer.addPass(px);
     } else this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.55, 0.6, 0.82);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.32, 0.35, 0.92)   // subtle: glow on real light sources only, no flare blobs;
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
     this.composer.addPass(this.grade);

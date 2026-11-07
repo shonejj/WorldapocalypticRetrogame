@@ -1,3 +1,4 @@
+import { NO_REFLECT } from '../art/kit';
 import * as THREE from 'three';
 
 /** Rain: a box of streaks that follows the camera, plus ground splash positions for FX. */
@@ -13,7 +14,7 @@ export class Rain {
     for (let i = 0; i < count; i++) this.respawn(i, true);
     const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 6), 3));
     this.lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ color: 0x9fb8c8, transparent: true, opacity: 0.17, depthWrite: false }));
-    this.lines.frustumCulled = false; scene.add(this.lines);
+    this.lines.frustumCulled = false; scene.add(this.lines); NO_REFLECT.add(this.lines);
   }
   private respawn(i: number, anywhere: boolean): void {
     const d = this.drops;

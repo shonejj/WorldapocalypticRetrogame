@@ -34,7 +34,7 @@ export function streetLamp(x: number, z = Z.lamps, lit = true, flicker = false):
   const g = B.build();
   if (!lit) return { group: g };
   const cone = lightCone(5.8, 2.2, 0xffc887, 0.022); cone.position.set(x + 1.5, 5.95, z); g.add(cone);
-  const glow = glowSprite(1.6, 0xffd9a0, 0.85); glow.position.set(x + 1.5, 5.9, z + 0.1); g.add(glow);
+  const glow = glowSprite(0.9, 0xffd9a0, 0.45); glow.position.set(x + 1.5, 5.9, z + 0.1); g.add(glow);
   cone.name = 'cone'; glow.name = 'glow';
   return { group: g, light: { x: x + 1.5, y: 5.6, z: z + 0.6, color: 0xffbf7a, intensity: 26, distance: 15, flicker, cone: true } };
 }

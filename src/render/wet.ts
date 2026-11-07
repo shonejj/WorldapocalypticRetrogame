@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { NO_REFLECT } from '../art/kit';
 
 /**
  * Wet street (threejs-materials-lighting + shader-programming): a planar Reflector renders the
@@ -60,7 +61,10 @@ export class WetReflections {
     const orig = this.reflector.onBeforeRender.bind(this.reflector);
     this.reflector.onBeforeRender = (r, sc, cam, geo, mat, grp) => {
       if (sc.overrideMaterial) return;                         // skip the pixel pass's normal render
+      const hidden: THREE.Object3D[] = [];
+      for (const o of NO_REFLECT) if (o.visible) { o.visible = false; hidden.push(o); }   // no halos/rain mirrored as floating flares
       orig(r, sc, cam, geo, mat, grp);
+      for (const o of hidden) o.visible = true;
       const tm = (this.reflector as unknown as { getRenderTarget(): THREE.WebGLRenderTarget }).getRenderTarget();
       WET.uRefl.value = tm.texture;
       WET.uReflMat.value.copy(texMat).multiply(this.inv.copy(this.reflector.matrixWorld).invert());   // world → reflection UV

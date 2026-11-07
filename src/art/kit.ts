@@ -90,7 +90,7 @@ export const M = {
   leaves: (dark = false, seed = 9) => std(`leaves${dark}${seed}`, () => { const t = TX.leaves(seed, dark); return new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6 }); }),
   window: (kind: 'lit' | 'dark' | 'shop' | 'tv', seed = 1) => std(`win${kind}${seed}`, () => {
     const t = TX.windowTexture(kind, seed);
-    return new THREE.MeshStandardMaterial({ map: t, emissive: kind === 'dark' ? 0x000000 : 0xffffff, emissiveMap: kind === 'dark' ? null : t, emissiveIntensity: kind === 'shop' ? 1.6 : 1.1, roughness: 0.08, metalness: 0.1 });
+    return new THREE.MeshStandardMaterial({ map: t, emissive: kind === 'dark' ? 0x000000 : 0xffffff, emissiveMap: kind === 'dark' ? null : t, emissiveIntensity: kind === 'shop' ? 1.0 : 0.8, roughness: 0.08, metalness: 0.1 });
   }),
   sign: (text: string, bg: string, fg: string, glow = 0.35) => std(`sign${text}${bg}${fg}`, () => {
     const t = TX.signTexture(text, { bg, fg });
@@ -104,13 +104,16 @@ export const M = {
   emissive: (color: number, intensity = 3) => std(`emis${color}${intensity}`, () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.4 })),
 };
 
+/** Screen-space-only effects (halos, fake light shafts, rain) that must NOT appear in puddle reflections. */
+export const NO_REFLECT = new Set<THREE.Object3D>();
+
 /** Additive light cone / glow sprite meshes (fake volumetrics; no lighting cost). */
 export function lightCone(len: number, radius: number, color: number, opacity = 0.05): THREE.Mesh {
   const g = new THREE.ConeGeometry(radius, len, 24, 1, true); g.translate(0, -len / 2, 0);
   const m = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide, alphaMap: TX.coneTexture(), fog: false });
-  const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 5; return mesh;
+  const mesh = new THREE.Mesh(g, m); mesh.renderOrder = 5; NO_REFLECT.add(mesh); return mesh;
 }
 export function glowSprite(size: number, color: number, opacity = 0.9): THREE.Sprite {
   const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: TX.glowTexture(), color, transparent: true, opacity, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
-  s.scale.setScalar(size); return s;
+  s.scale.setScalar(size); NO_REFLECT.add(s); return s;
 }
