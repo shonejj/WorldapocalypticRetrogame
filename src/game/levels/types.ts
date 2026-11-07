@@ -15,7 +15,8 @@ export interface LevelDef {
   lamps: { x: number; lit: boolean; flicker?: boolean }[]; poles: number[]; fences: [number, number][];
   trees: number[]; vehicles: { x: number; kind: VehicleKind; flip?: boolean; z?: number }[];
   props: { x: number; kind: PropKind; z?: number }[];
-  caches: { id: string; x: number; label: string; loot: Loot; time: number; noise?: number }[];
+  /** enter: a big place with an interior map; style: a small searchable shown in close-up */
+  caches: { id: string; x: number; label: string; loot: Loot; time: number; noise?: number; enter?: import('../interior').InteriorKind; style?: 'car' | 'box' | 'shelf' }[];
   pickups: { id: string; x: number; item: ItemId; qty: number }[];
   infected: { id: string; x: number; type: InfectedType; state: 'idle' | 'dormant' | 'wander'; facing?: 1 | -1 }[];
   workbench: { x: number };

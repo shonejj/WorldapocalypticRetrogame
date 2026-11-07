@@ -41,15 +41,15 @@ export const CHAPTER1: LevelDef = {
     { x: 113, kind: 'crate' }, { x: 119, kind: 'barrier' }, { x: 133, kind: 'tires', z: -3.6 },
   ],
   caches: [
-    { id: 'c_veggies', x: -12.5, label: `Search ${WORLD_NAMES.storeName}`, loot: { food: 2, water: 2, cloth: 2 }, time: 1.6 },
-    { id: 'c_sedan', x: 7.6, label: 'Search the sedan', loot: { ammo_rifle: 12, tape: 1 }, time: 1.3, noise: 3 },
-    { id: 'c_apartment', x: 18, label: 'Search the lobby', loot: { alcohol: 1, ammo_9mm: 10 }, time: 1.5 },
-    { id: 'c_pharmacy', x: 28.5, label: `Search the ${WORLD_NAMES.pharmacyName.toLowerCase()}`, loot: { bandage: 2, medkit: 1, battery: 1, alcohol: 1 }, time: 2 },
-    { id: 'c_van', x: 42, label: 'Search the van', loot: { scrap: 2, bottle: 1 }, time: 1.3, noise: 3 },
-    { id: 'c_garage', x: 50, label: `Search the ${WORLD_NAMES.garageName.toLowerCase()}`, loot: { scrap: 3, tape: 1, ammo_shells: 6 }, time: 2 },
-    { id: 'c_bus', x: 74, label: 'Search the bus', loot: { ammo_rifle: 15, water: 1, food: 1 }, time: 1.6 },
-    { id: 'c_billboard', x: 91, label: 'Search the maintenance box', loot: { battery: 1, cloth: 2, ammo_9mm: 8 }, time: 1.4 },
-    { id: 'c_apartment2', x: 101, label: 'Search the apartment', loot: { medkit: 1, food: 1 }, time: 1.6 },
+    { id: 'c_veggies', x: -12.5, label: `Enter ${WORLD_NAMES.storeName}`, enter: 'store', loot: { food: 2, water: 2, cloth: 2 }, time: 1.6 },
+    { id: 'c_sedan', x: 7.6, label: 'Search the sedan', style: 'car', loot: { ammo_rifle: 12, tape: 1 }, time: 1.3, noise: 3 },
+    { id: 'c_apartment', x: 18, label: 'Enter the apartment', enter: 'apartment', loot: { alcohol: 1, ammo_9mm: 10 }, time: 1.5 },
+    { id: 'c_pharmacy', x: 28.5, label: `Enter the ${WORLD_NAMES.pharmacyName.toLowerCase()}`, enter: 'pharmacy', loot: { bandage: 2, medkit: 1, battery: 1, alcohol: 1 }, time: 2 },
+    { id: 'c_van', x: 42, label: 'Search the van', style: 'car', loot: { scrap: 2, bottle: 1 }, time: 1.3, noise: 3 },
+    { id: 'c_garage', x: 50, label: `Enter the ${WORLD_NAMES.garageName.toLowerCase()}`, enter: 'garage', loot: { scrap: 3, tape: 1, ammo_shells: 6 }, time: 2 },
+    { id: 'c_bus', x: 74, label: 'Board the bus', enter: 'bus', loot: { ammo_rifle: 15, water: 1, food: 1 }, time: 1.6 },
+    { id: 'c_billboard', x: 91, label: 'Search the maintenance box', style: 'box', loot: { battery: 1, cloth: 2, ammo_9mm: 8 }, time: 1.4 },
+    { id: 'c_apartment2', x: 101, label: 'Enter the apartment', enter: 'apartment', loot: { medkit: 1, food: 1 }, time: 1.6 },
   ],
   pickups: [
     { id: 'p1', x: 11, item: 'bottle', qty: 1 }, { id: 'p2', x: 22, item: 'ammo_9mm', qty: 6 }, { id: 'p3', x: 35, item: 'cloth', qty: 2 },
@@ -61,12 +61,13 @@ export const CHAPTER1: LevelDef = {
     { id: 'z1', x: 14, type: 'common', state: 'idle', facing: 1 },
     // pharmacy: dormant pair inside the glow → lure with a bottle or sneak in the dark
     { id: 'z2', x: 29.5, type: 'common', state: 'dormant' }, { id: 'z3', x: 31.5, type: 'common', state: 'dormant', facing: -1 },
-    { id: 'z4', x: 37, type: 'common', state: 'wander' },
+    { id: 'z4', x: 37, type: 'crawler', state: 'wander' },
+    { id: 'z19', x: 21.5, type: 'crawler', state: 'idle', facing: -1 },   // under the hatchback
     // overpass gauntlet: crowd + runners; gunfire here pulls everyone
     { id: 'z5', x: 66, type: 'common', state: 'wander' }, { id: 'z6', x: 69, type: 'common', state: 'idle', facing: -1 }, { id: 'z7', x: 71, type: 'runner', state: 'idle', facing: -1 },
-    { id: 'z8', x: 75, type: 'common', state: 'dormant' }, { id: 'z9', x: 78, type: 'common', state: 'wander' }, { id: 'z10', x: 81, type: 'common', state: 'idle' },
-    { id: 'z11', x: 84, type: 'runner', state: 'wander' }, { id: 'z12', x: 87, type: 'common', state: 'dormant' }, { id: 'z13', x: 93, type: 'common', state: 'wander' },
-    { id: 'z14', x: 106, type: 'common', state: 'idle', facing: -1 }, { id: 'z15', x: 110, type: 'runner', state: 'dormant' },
+    { id: 'z8', x: 75, type: 'common', state: 'dormant' }, { id: 'z20', x: 79.5, type: 'screamer', state: 'idle', facing: -1 }, { id: 'z9', x: 78, type: 'common', state: 'wander' }, { id: 'z10', x: 81, type: 'common', state: 'idle' },
+    { id: 'z11', x: 84, type: 'hound', state: 'wander' }, { id: 'z12', x: 87, type: 'common', state: 'dormant' }, { id: 'z13', x: 93, type: 'common', state: 'wander' },
+    { id: 'z14', x: 106, type: 'common', state: 'idle', facing: -1 }, { id: 'z15', x: 110, type: 'hound', state: 'dormant' }, { id: 'z21', x: 103, type: 'crawler', state: 'idle' },
     // climax at the relay
     { id: 'z16', x: 127, type: 'brute', state: 'idle', facing: -1 }, { id: 'z17', x: 124, type: 'common', state: 'idle' }, { id: 'z18', x: 131, type: 'common', state: 'wander' },
   ],

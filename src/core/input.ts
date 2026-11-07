@@ -36,7 +36,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   crouch: [key('KeyC'), key('ControlLeft'), { d: 'pad', button: 1 }],
   fire: [key('KeyJ'), { d: 'mouse', button: 0 }, { d: 'pad', button: 7 }, { d: 'pad', button: 5 }],
   melee: [key('KeyF'), key('KeyK'), { d: 'mouse', button: 2 }, { d: 'pad', button: 2 }],
-  interact: [key('KeyE'), key('KeyW'), key('ArrowUp'), { d: 'pad', button: 0 }],
+  interact: [key('KeyE'), { d: 'pad', button: 0 }],   // W/↑ walk 'up' inside buildings
   reload: [key('KeyR'), { d: 'pad', button: 3 }],
   heal: [key('KeyH'), { d: 'pad', button: 12 }],
   throw: [key('KeyT'), key('KeyG'), { d: 'pad', button: 6 }],
@@ -59,7 +59,7 @@ export function radialDeadzone(x: number, y: number, dead = 0.22): [number, numb
 
 /** One tick's worth of action state handed to the simulation. */
 /** aimX: world x under the mouse (PC aiming); aimDir: right-stick facing (gamepad). */
-export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number; aimX?: number; aimDir?: number }
+export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number; aimX?: number; aimDir?: number; /** interiors: + = toward the camera */ moveY?: number }
 
 const BUFFER_MS = 130;
 
@@ -73,7 +73,9 @@ export class Input {
   private pressedAt = new Map<Action, number>();
   /** Touch UI writes held actions here and calls tap() for discrete ones. */
   touchHeld = new Set<Action>();
-  touchMoveX = 0;
+  touchMoveX = 0; touchMoveY = 0;
+  /** true inside buildings: the stick/WASD move on both axes */
+  planar = false;
   private capture: ((b: Binding) => void) | null = null;
   onDevice: ((d: Device) => void) | null = null;
   /** Mouse position in CSS px (PC aiming); converted to world x by `toWorldX` (set by the app). */
@@ -82,17 +84,18 @@ export class Input {
 
   constructor(target: HTMLElement) {
     this.bindings = readPrefs<Bindings>('bindings', structuredClone(DEFAULT_BINDINGS));
+    this.bindings.interact = this.bindings.interact.filter((b) => !(b.d === 'key' && (b.code === 'KeyW' || b.code === 'ArrowUp')));   // old saves: W/↑ now walk up indoors
     addEventListener('keydown', (e) => {
       if (this.capture) { e.preventDefault(); if (e.code !== 'Escape') this.finishCapture({ d: 'key', code: e.code }); else this.capture = null; return; }
       if (['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
-      if (!e.repeat) this.keys.add(e.code);
+      if (!e.repeat) { this.keys.add(e.code); this.edge((b) => b.d === 'key' && b.code === e.code); }
       this.setDevice('keyboard');
     });
     addEventListener('keyup', (e) => this.keys.delete(e.code));
     target.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse') return;
       if (this.capture) { this.finishCapture({ d: 'mouse', button: e.button }); return; }
-      this.mouse.add(e.button); this.setDevice('keyboard');
+      this.mouse.add(e.button); this.edge((b) => b.d === 'mouse' && b.button === e.button); this.setDevice('keyboard');
     });
     addEventListener('pointerup', (e) => { if (e.pointerType === 'mouse') this.mouse.delete(e.button); });
     addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse') this.ptr = { x: e.clientX, y: e.clientY }; });
@@ -100,6 +103,12 @@ export class Input {
     target.addEventListener('contextmenu', (e) => e.preventDefault());
     addEventListener('blur', () => { this.keys.clear(); this.mouse.clear(); this.touchHeld.clear(); this.touchMoveX = 0; });
     addEventListener('touchstart', () => this.setDevice('touch'), { passive: true });
+  }
+
+  /** A tap shorter than one frame must still count: record discrete presses at event time. */
+  private edge(match: (b: Binding) => boolean): void {
+    const now = performance.now();
+    for (const a of ACTIONS) if (DISCRETE.has(a) && !this.suppressUntilRelease.has(a) && this.bindings[a].some(match)) this.pressedAt.set(a, now);
   }
 
   private setDevice(d: Device): void { if (d !== this.device) { this.device = d; this.onDevice?.(d); } }
@@ -143,6 +152,7 @@ export class Input {
     this.suppressUntilRelease = new Set(ACTIONS.filter((a) => this.touchHeld.has(a) || this.bindings[a].some((b) => this.isActive(b))));
   }
   private suppressUntilRelease = new Set<Action>();
+  private lastFrame = 0;
 
   /** Touch buttons for discrete actions. */
   tap(a: Action): void { this.pressedAt.set(a, performance.now()); this.setDevice('touch'); }
@@ -151,15 +161,17 @@ export class Input {
   frame(now: number): InputFrame {
     const held = new Set<Action>(), pressed = new Set<Action>();
     for (const a of this.prevActive) held.add(a);
+    const win = BUFFER_MS + Math.max(0, now - this.lastFrame);   // a slow frame must not expire a tap made during it
     for (const [a, t] of this.pressedAt) {
-      if (now - t <= BUFFER_MS || !DISCRETE.has(a)) pressed.add(a);
+      if (now - t <= win || !DISCRETE.has(a)) pressed.add(a);
     }
-    this.pressedAt.clear();
+    this.pressedAt.clear(); this.lastFrame = now;
     let moveX = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
     const stick = this.pad.axes[0] ?? 0;
     if (Math.abs(stick) > 0.05) moveX = stick;
     if (this.touchMoveX) moveX = this.touchMoveX;
-    const out: InputFrame = { held, pressed, moveX };
+    const k = (c: string) => this.keys.has(c), py = this.pad.axes[1] ?? 0;
+    const out: InputFrame = { held, pressed, moveX, moveY: this.touchMoveY || (Math.abs(py) > 0.15 ? py : (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0)) };
     if (this.device === 'keyboard' && this.ptr && this.toWorldX) out.aimX = this.toWorldX(this.ptr.x, this.ptr.y);
     const rx = this.pad.axes[2] ?? 0;
     if (this.device === 'gamepad' && Math.abs(rx) > 0.5) out.aimDir = Math.sign(rx);

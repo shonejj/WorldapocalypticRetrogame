@@ -149,3 +149,5 @@ body.touch-on .hint { top: calc(150px + var(--st)); }
 .introline { font-family: var(--mono); color: var(--accent); letter-spacing: .12em; font-size: clamp(14px, 2.2vw, 22px); min-height: 1.5em; text-align: center; padding: 0 16px; }
 .introcard { font-size: clamp(26px, 5vw, 54px); letter-spacing: .12em; font-weight: 800; text-transform: uppercase; color: var(--text); text-align: center; }
 .intro .skip { position: absolute; bottom: calc(18px + var(--sb)); font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: .1em; }
+
+.fade { position: fixed; inset: 0; background: #000; opacity: 0; transition: opacity .35s ease; z-index: 60; pointer-events: none; }

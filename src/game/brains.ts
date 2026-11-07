@@ -118,7 +118,7 @@ export class SquadBrain implements Brain {
 interface ZBoard { a: Actor; w: AIWorld; dt: number; time: number; seen: Actor | null; seenD: number; out: Intent }
 
 export class InfectedBrain implements Brain {
-  private wanderT = 0; private wanderDir = 0; private lostT = 0; private groanT = Math.random() * 8;
+  private wanderT = 0; private wanderDir = 0; private lostT = 0; private screamCd = 0; private groanT = Math.random() * 8;
   private bb!: ZBoard;
   private tree: Node<ZBoard>;
 
@@ -164,6 +164,13 @@ export class InfectedBrain implements Brain {
     const dx = t.x - a.x;
     if (this.lostT > 5 && Math.abs(dx) > d.sight) { a.investigateX = t.x; a.state = 'investigate'; a.stateT = 0; return Status.Failure; }
     b.out.faceX = Math.sign(dx);
+    if (d.gait === 'scream' && Math.abs(dx) > d.reach) {
+      // screamer: plants itself and calls every host in earshot, again and again, until it is killed
+      this.screamCd -= b.dt; a.screamT = Math.max(0, a.screamT - b.dt);
+      if (this.screamCd <= 0) { this.screamCd = 6; a.screamT = 1.4; b.w.cry(a); }
+      if (Math.abs(dx) < 4) { b.out.moveX = -Math.sign(dx) * 0.6; }   // keeps its distance
+      return Status.Running;
+    }
     if (Math.abs(dx) <= d.reach) b.out.melee = true; else { b.out.moveX = Math.sign(dx); b.out.run = true; }
     return Status.Running;
   }

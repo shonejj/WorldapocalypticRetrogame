@@ -90,7 +90,7 @@ export const M = {
   leaves: (dark = false, seed = 9) => std(`leaves${dark}${seed}`, () => { const t = TX.leaves(seed, dark); return new THREE.MeshStandardMaterial({ map: t.map, normalMap: t.normalMap, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.6 }); }),
   window: (kind: 'lit' | 'dark' | 'shop' | 'tv', seed = 1) => std(`win${kind}${seed}`, () => {
     const t = TX.windowTexture(kind, seed);
-    return new THREE.MeshStandardMaterial({ map: t, emissive: kind === 'dark' ? 0x000000 : 0xffffff, emissiveMap: kind === 'dark' ? null : t, emissiveIntensity: kind === 'shop' ? 1.0 : 0.8, roughness: 0.08, metalness: 0.1 });
+    return new THREE.MeshStandardMaterial({ map: t, emissive: kind === 'dark' ? 0x000000 : 0xffffff, emissiveMap: kind === 'dark' ? null : t, emissiveIntensity: kind === 'shop' ? 1.0 : kind === 'tv' ? 0.4 : 0.8, roughness: 0.08, metalness: 0.1 });
   }),
   sign: (text: string, bg: string, fg: string, glow = 0.35) => std(`sign${text}${bg}${fg}`, () => {
     const t = TX.signTexture(text, { bg, fg });

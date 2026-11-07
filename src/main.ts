@@ -41,6 +41,7 @@ class App {
   offline = !!navigator.serviceWorker?.controller;
   private fps = h('div.fps.hidden'); private fpsAcc = 0; private fpsN = 0;
   private perf = { t: 0, n: 0, done: false };
+  private carry: Set<string> | null = null;
 
   constructor() {
     document.title = GAME.title;
@@ -107,12 +108,27 @@ class App {
         if (import.meta.env.DEV) (window as unknown as { __game: Game; __app: App }).__game = g;
         (window as unknown as { __app: App }).__app = this;
         this.apply(this.settings);
-        this.r.renderer.compile(this.r.scene, this.r.camera);          // warm shaders before play
+        this.warmUp(g);
       } finally { loading.remove(); }
       this.perf = { t: 0, n: 0, done: false };
       if (!save) introScreen(this.screens, CHAPTER1.name, () => this.updateTouch());     // new game: the broadcast first
       this.updateTouch();
     }, 30));
+  }
+
+  /**
+   * Stutter fix: compile every shader and upload every texture/geometry BEFORE play. Hidden pooled
+   * objects (effects, off-screen actors, loot glints) are shown for a moment and the camera sweeps the
+   * level, so nothing compiles or uploads mid-game (each first-time compile was a visible hitch).
+   */
+  private warmUp(g: Game): void {
+    const r = this.r, hidden: THREE.Object3D[] = [];
+    r.scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    r.renderer.compile(r.scene, r.camera);
+    const fx = r.focus.x, step = Math.max(6, r.halfWidth * 1.6);
+    for (let x = g.x0; x <= g.x1 + step; x += step) { r.focus.x = x; r.camera.updateMatrixWorld(); r.render(0); }
+    r.focus.x = fx;
+    for (const o of hidden) o.visible = false;
   }
 
   private teardown(): void { this.hud?.dispose(); this.hud = null; this.game?.dispose(); this.game = null; this.lines = []; this.pendingChoices = []; audio.duck(false); }
@@ -187,11 +203,13 @@ class App {
       else if (f.pressed.has('inventory')) this.inventory(false);
       else {
         const n = this.clock.advance(dt, now);
+        if (this.carry) { for (const a of this.carry) (f.pressed as Set<string>).add(a); this.carry = null; }
+        if (n === 0 && f.pressed.size) this.carry = f.pressed;      // no sim step this frame: keep taps for the next one
         for (let i = 0; i < n; i++) g.tick(STEP, i === 0 ? f : null);
       }
       this.stepDialogue(now);
     } else this.input.frame(now);            // drain buffered presses while menus are open
-    if (g) { g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
+    if (g) { this.input.planar = !!g.inside; g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
     audio.update();
     this.r.grade.uniforms.uHurt.value = g ? Math.max(0, 1 - g.leader.hp / g.leader.maxHp - 0.45) * 0.9 : 0;
     this.r.render(now / 1000);

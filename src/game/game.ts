@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WetReflections } from '../render/wet';
+import { Interior, type InteriorKind, type Spot } from './interior';
 import { FACADE_Z } from '../art/buildings';
 import * as planck from 'planck';
 import { Actor, idle, type Host, type Intent } from './actor';
@@ -43,7 +44,7 @@ export interface GameEvents extends Record<string, unknown> {
   complete: Record<string, never>;
 }
 
-interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'workbench' | 'relay'; loot?: Loot; time: number; noise?: number }
+interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'workbench' | 'relay'; loot?: Loot; time: number; noise?: number; enter?: InteriorKind; style?: 'car' | 'box' | 'shelf' }
 interface Corpse { actor: Actor; rd: Ragdoll; view: View; age: number }
 interface Lure { body: planck.Body; mesh: THREE.Object3D; t: number; broke: boolean }
 
@@ -62,7 +63,11 @@ export class Game implements Host, AIWorld {
   private corpses: Corpse[] = []; private lures: Lure[] = [];
   private pickups: { id: string; x: number; item: ItemId; qty: number; mesh: THREE.Object3D }[] = [];
   interactables: Interactable[] = [];
+  private shot: { x: number; until: number } | null = null;
   private lootSpots = new Map<string, THREE.Object3D>();
+  /** interiors (T12): the room the leader is in, rooms already built (keep their state), search in progress */
+  inside: Interior | null = null; private rooms = new Map<string, Interior>(); private insideUse: { spot: Spot; t: number } | null = null;
+  private outsideState = { rain: true, wet: false };
   readonly player = new PlayerBrain();
   controlled = 0; hold = { on: false, x: 0 };
   looted = new Set<string>(); picked = new Set<string>(); killed = new Set<string>(); objectives = new Set<string>(); seenBeats = new Set<string>();
@@ -101,12 +106,12 @@ export class Game implements Host, AIWorld {
       if (this.killed.has(d.id)) continue;
       const a = new Actor({ x: d.x, infected: d.type });
       a.levelId = d.id; a.state = d.state; a.facing = d.facing ?? (this.rng.chance(0.5) ? 1 : -1);
-      const v = makeView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);
+      const v = makeView(infectedLook(d.type, Math.round(d.x * 13)), a.scale);   // each type has its own mutated body
       this.add(a, v); this.infected.push(a); this.brains.set(a.id, new InfectedBrain());
     }
     // interactables
     for (const c of level.caches) if (!this.looted.has(c.id)) {
-      this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise });
+      this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise, enter: c.enter, style: c.style });
       const m = lootSpot(hashString(c.id)); m.position.set(c.x, 0, -0.95); r.scene.add(m); this.lootSpots.set(c.id, m);
     }
     this.interactables.push({ id: 'workbench', x: level.workbench.x, label: 'Use workbench', kind: 'workbench', time: 0 });
@@ -126,7 +131,7 @@ export class Game implements Host, AIWorld {
   medical(): number { return this.stash.count('medkit') + this.stash.count('bandage'); }
   ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.ammo(t) : 0; }
   weaponsFree(): boolean { return this.alert || this.time - this.lastShot < 6; }
-  cry(z: Actor): void { this.sfx(z.type === 'runner' ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'runner' ? 1 : 0.8); this.noise(z.x, z.type === 'runner' ? NOISE.shout : 7, z); }
+  cry(z: Actor): void { const loud = z.type === 'runner' || z.type === 'screamer' || z.type === 'hound'; this.sfx(loud ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, loud ? 1 : 0.8); this.noise(z.x, z.type === 'screamer' ? NOISE.shout * 1.6 : loud ? NOISE.shout : 7, z, true); }
   groan(z: Actor): void { this.sfx(z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'brute' ? 0.7 : 0.55); }
 
   // ------------------------------------------------------------------ Host
@@ -286,7 +291,7 @@ export class Game implements Host, AIWorld {
     const sx = a.x + a.facing * 0.3, dx = targetX - sx, t = 0.75;
     const body = this.world.createDynamicBody({ position: { x: sx, y: 1.6 }, bullet: true, linearVelocity: { x: dx / t, y: 11 * t * 0.5 + 0.5 }, angularVelocity: -a.facing * 12 });
     body.createFixture(new planck.Circle(0.06), { density: 20, filterCategoryBits: CAT.LURE, filterMaskBits: CAT.GROUND | CAT.PROP, userData: { kind: 'lure', material: 'glass' } as Tag });
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.24, 8), new THREE.MeshPhysicalMaterial({ color: 0x3f6a3a, roughness: 0.1, transmission: 0.3 }));
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.24, 8), new THREE.MeshStandardMaterial({ color: 0x3f6a3a, roughness: 0.1, transparent: true, opacity: 0.8 })   /* no transmission: it adds a full extra scene render per frame */);
     this.r.scene.add(mesh); this.lures.push({ body, mesh, t: 0, broke: false });
   }
 
@@ -309,6 +314,7 @@ export class Game implements Host, AIWorld {
     for (const it of this.interactables) { const d = Math.abs(it.x - L.x); if (d < bd) { bd = d; this.focus = it; } }
     if (f.pressed.has('interact') && this.focus && !this.using) {
       if (this.focus.kind === 'workbench') { this.ev.emit('dialogue', { knot: '__craft' }); return; }
+      if (this.focus.enter) { this.enterInterior(this.focus); return; }
       if (this.focus.kind === 'relay' && !this.stash.count(this.level.goal.needs)) { this.ev.emit('dialogue', { knot: 'relay_locked' }); this.setObjective('o_fuse', false); return; }
       this.using = this.focus; this.progress = 0;
       if (this.focus.noise) this.noise(L.x, this.focus.noise, null);
@@ -320,7 +326,7 @@ export class Game implements Host, AIWorld {
   private stepUse(dt: number): void {
     const u = this.using; if (!u) { this.progress = 0; return; }
     const speed = this.leader.survivor?.role === 'scavenger' ? 1.5 : 1;
-    this.progress += (dt / Math.max(0.1, u.time)) * speed;
+    this.progress += (dt / Math.max(u.style ? 2.2 : 0.1, u.time)) * speed;   // close-ups last long enough to read
     if (this.progress < 1) return;
     this.using = null; this.progress = 0;
     this.interactables = this.interactables.filter((i) => i !== u);
@@ -371,6 +377,7 @@ export class Game implements Host, AIWorld {
   // ------------------------------------------------------------------ simulation
   tick(dt: number, f: InputFrame | null): void {
     this.time += dt;
+    if (this.inside) { this.tickInside(dt, f); return; }      // the street holds still while one survivor is indoors
     if (f && !this.ended) this.commands(f);
     // first sub-step gets the full frame; later sub-steps keep held state but no repeated one-shots
     if (this.ended) this.player.frame = null;
@@ -387,7 +394,7 @@ export class Game implements Host, AIWorld {
     this.stepLures(dt);
     this.stepBeats();
     const hunting = this.infected.filter((z) => z.alive && z.state === 'chase').length;
-    if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) audio.play('alert'); }
+    if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) { audio.play('alert'); audio.stinger(); } }
     const suspicious = Math.max(0, ...this.infected.filter((z) => z.alive && Math.abs(z.x - this.leader.x) < 18).map((z) => z.suspicion));
     this.intensity = Math.max((this.beat?.intensity ?? 0.1) * 0.35, this.alert ? 0.7 + Math.min(0.3, hunting * 0.06) : suspicious * 0.55);
     for (const cp of this.level.checkpoints) if (this.leader.x > cp && this.checkpointX < cp && !this.alert) { this.checkpointX = cp; this.ev.emit('checkpoint', { x: cp }); }
@@ -444,10 +451,15 @@ export class Game implements Host, AIWorld {
   update(dt: number, alpha: number): void {
     void alpha;
     const L = this.leader;
+    if (this.inside) { this.updateInside(dt); return; }
     this.cam.update(dt, L.x, L.facing, L.vx, this.r.halfWidth, this.x0, this.x1, this.time);
     this.r.focus.set(this.cam.x, 2.0, 0);
     // camera moments per beat + trailing yaw while moving (2.5D parallax)
-    const k = 1 - Math.exp(-1.6 * dt), cm = this.beat?.cam;
+    // small searchables get a close-up shot on the hands (T11)
+    if (this.using?.style) this.shot = { x: this.using.x, until: this.time + 0.9 };   // hold the shot a beat after the search ends
+    const close = this.shot && this.time < this.shot.until ? { zoom: 0.52, lift: -0.55 } : null;
+    if (close) this.r.focus.x += (this.shot!.x - this.r.focus.x) * 0.5;
+    const k = 1 - Math.exp(-(close ? 3 : 1.6) * dt), cm = close ?? this.beat?.cam;
     this.r.zoom += ((cm?.zoom ?? 1) - this.r.zoom) * k;
     this.r.lift += ((cm?.lift ?? 0) - this.r.lift) * k;
     this.r.swing += (L.vx * 0.5 - this.r.swing) * (1 - Math.exp(-2.2 * dt));
@@ -483,6 +495,80 @@ export class Game implements Host, AIWorld {
     for (const s of this.squad) if (s.alive && s.running && Math.random() < dt * 6) this.fx.splash(s.x, 0.1);
   }
 
+  // ------------------------------------------------------------------ interiors (T12)
+  private fade(then: () => void): void {
+    const el = document.createElement('div'); el.className = 'fade'; document.body.append(el);
+    requestAnimationFrame(() => { el.style.opacity = '1'; setTimeout(() => { then(); el.style.opacity = '0'; setTimeout(() => el.remove(), 450); }, 380); });
+  }
+  private enterInterior(it: Interactable): void {
+    if (this.inside) return;
+    this.fade(() => {
+      let room = this.rooms.get(it.id);
+      if (!room) { room = new Interior(it.enter!, it.id, it.loot ?? {}, this.looted, hashString(it.id)); this.rooms.set(it.id, room); }
+      room.pos.set(room.exit.x, 0, room.exit.z - 0.4); room.heading = Math.PI; room.speed = 0;
+      this.r.scene.add(room.group); this.inside = room; this.insideUse = null; this.using = null;
+      this.outsideState = { rain: this.rain.enabled, wet: this.wet.enabled };
+      this.rain.enabled = false; this.wet.setEnabled(false); this.lights.set(room.lights);
+      this.r.iso = room.world().add(new THREE.Vector3(0, 0.9, 0));
+      for (const s of this.squad) this.views.get(s.id)!.root.visible = s === this.leader;
+      for (const z of this.infected) this.views.get(z.id)!.root.visible = false;
+      const others = this.squad.filter((s) => s.alive && s !== this.leader).map((s) => s.name);
+      this.toast(`${it.label.replace(/^(Enter|Board) /, '')}: ${others.join(', ')} keep watch outside.`, 'info');
+      audio.play('search', this.leader.x, 0.5);
+    });
+  }
+  private leaveInterior(): void {
+    const room = this.inside; if (!room) return;
+    this.fade(() => {
+      room.group.removeFromParent(); this.inside = null; this.insideUse = null; this.focus = null;
+      this.rain.enabled = this.outsideState.rain; this.wet.setEnabled(this.outsideState.wet); this.lights.set(this.built.lights);
+      this.r.iso = null;
+      if (room.emptied) {                                       // nothing left inside: the door stops offering entry
+        this.looted.add(room.cacheId); this.interactables = this.interactables.filter((i) => i.id !== room.cacheId);
+        const spot = this.lootSpots.get(room.cacheId); if (spot) { spot.getObjectByName('glint')?.removeFromParent(); this.lootSpots.delete(room.cacheId); }
+        if (!this.objectives.has('o_supplies') && this.looted.size >= 4) this.setObjective('o_supplies', true);
+      }
+    });
+  }
+  private insideFrame: InputFrame | null = null;
+  private tickInside(dt: number, f: InputFrame | null): void {
+    const room = this.inside!; if (f) this.insideFrame = f;
+    const fr = this.insideFrame; if (!fr) return;
+    // screen-relative movement for the isometric camera (camera sits at +x/+z looking at the avatar)
+    const mx = fr.moveX, my = fr.moveY ?? 0, R = [0.78, -0.62], F = [-0.62, -0.78];
+    const moving = Math.hypot(mx, my) > 0.12 && !this.insideUse;
+    const near = room.move(dt, moving ? R[0] * mx - F[0] * my : 0, moving ? R[1] * mx - F[1] * my : 0, fr.held.has('run'));
+    this.focus = this.insideUse ? this.focus : near.spot ? { id: near.spot.id, x: this.leader.x, label: near.spot.label, kind: 'cache', time: near.spot.time } : near.atExit ? { id: 'exit', x: this.leader.x, label: 'Leave', kind: 'cache', time: 0 } : null;
+    if (f?.pressed.has('interact')) {
+      if (near.atExit && !near.spot) { this.insideFrame = null; this.leaveInterior(); return; }
+      if (near.spot && !this.insideUse) { this.insideUse = { spot: near.spot, t: 0 }; audio.play('search', this.leader.x, 0.5); }
+    }
+    if (this.insideUse) {
+      if (Math.hypot(mx, my) > 0.3) { this.insideUse = null; this.progress = 0; return; }
+      const u = this.insideUse; u.t += dt * (this.leader.survivor?.role === 'scavenger' ? 1.5 : 1); this.progress = u.t / u.spot.time;
+      if (this.progress >= 1) {
+        room.take(u.spot); this.looted.add(u.spot.id); this.insideUse = null; this.progress = 0;
+        if (u.spot.note) this.toast(u.spot.note, 'info');
+        const got: string[] = [];
+        for (const [k, n] of Object.entries(u.spot.loot) as [ItemId, number][]) { const a = this.stash.add(k, n); if (a) got.push(`+${a} ${ITEMS[k].name}`); }
+        if (got.length) { audio.play('pickup'); this.toast(got.join('  '), 'loot'); this.ev.emit('stash', {}); }
+        else if (!u.spot.note) this.toast('Nothing useful here.', 'info');
+        if (room.emptied) this.toast('Nothing left here. The door is behind you.', 'info');
+      }
+    } else this.progress = 0;
+  }
+  private updateInside(dt: number): void {
+    const room = this.inside!, L = this.leader, v = this.views.get(L.id)!, p = room.world();
+    this.r.iso!.lerp(p.clone().add(new THREE.Vector3(0, 0.9, 0)), 1 - Math.exp(-6 * dt));
+    this.r.shakeOffset.set(0, 0, 0);
+    this.lights.update(p.x, this.time);
+    const ai = room.tick(this.time, this.insideUse ? this.insideUse.spot.anim : null);
+    if (v instanceof SkinnedView) v.animate({ t: L.time, phase: L.phase, speed: ai.speed ?? 0, run: !!ai.run, crouch: false, gait: 'survivor', stance: WEAPONS[L.weapon].stance, aim: 0, recoil: 0, melee: 0, reload: 0, heal: 0, hurt: 0, attack: 0, throwT: 0, dormant: false, drawn: false, task: ai.task ?? null }, dt);
+    v.root.visible = true; v.root.position.copy(p); v.root.rotation.set(0, room.heading, 0);
+    this.fx.update(dt);
+    audio.setIntensity(0.15);
+  }
+
   private updateActorView(a: Actor, dt: number): void {
     const v = this.views.get(a.id)!, pose = this.poses.get(a.id)!, w = WEAPONS[a.weapon];
     const sq = a.team === 'squad';
@@ -492,7 +578,8 @@ export class Game implements Host, AIWorld {
       melee: a.meleeT >= 0 ? a.meleeT / MELEE_TIME : 0, reload: a.reloadT >= 0 ? a.reloadT / w.reload : 0, heal: a.healT >= 0 ? 1 : 0,
       hurt: a.hurtT, attack: a.attackT >= 0 ? a.attackT / a.infected!.windup : 0, throwT: a.throwT >= 0 ? a.throwT / 0.6 : 0,
       dormant: !sq && a.state === 'dormant', drawn: a.drawn || a.drawT > 0.3,
-      task: a === this.leader && this.using ? (this.using.kind === 'relay' ? 'interact' : 'search') : null,
+      scream: a.screamT,
+      task: a === this.leader && this.using ? (this.using.kind === 'relay' ? 'interact' : this.using.style === 'car' ? 'open' : this.using.style === 'shelf' ? 'pick' : 'search') : null,
     };
     targetPose(ai, this.tgt);
     blendPose(pose, this.tgt, !sq && a.state === 'waking' ? 3 : 18, dt);

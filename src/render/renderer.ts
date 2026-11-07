@@ -77,6 +77,8 @@ export class Renderer {
    *  the game per level beat (camera "moments") and by movement (the camera trails, so it yaws). */
   readonly baseDistance = 10;
   zoom = 1; lift = 0; swing = 0;
+  /** interiors: isometric camera around this target (null = side-scrolling street camera) */
+  iso: THREE.Vector3 | null = null;
   get distance(): number { return this.baseDistance * this.zoom; }
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -156,13 +158,16 @@ export class Renderer {
 
   render(time: number): void {
     const f = this.focus, s = this.shakeOffset;
-    this.camera.position.set(f.x + s.x - this.swing, f.y - 0.45 + this.lift + s.y, this.distance);
-    this.camera.lookAt(f.x + s.x * 0.5, f.y + this.lift * 0.35 + s.y * 0.5, 0);
+    if (this.iso) { const t = this.iso; this.camera.position.set(t.x + 5.0 + s.x, t.y + 7.6 + s.y, t.z + 6.3); this.camera.lookAt(t); }
+    else {
+      this.camera.position.set(f.x + s.x - this.swing, f.y - 0.45 + this.lift + s.y, this.distance);
+      this.camera.lookAt(f.x + s.x * 0.5, f.y + this.lift * 0.35 + s.y * 0.5, 0);
+    }
     this.camera.rotation.z += s.z;
     this.grade.uniforms.uTime.value = time % 100;
     const u = this.dof.uniforms, rb = this.composer.readBuffer;
     u.tDepth.value = rb.depthTexture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
-    u.uFocus.value = this.camera.position.z; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
+    u.uFocus.value = this.iso ? this.camera.position.distanceTo(this.iso) : this.camera.position.z; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
     this.composer.render();
   }
 

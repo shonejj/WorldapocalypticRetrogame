@@ -67,7 +67,7 @@ function builtProp(kind: PropKind, seed = 1): Prop {
       return { group: B.build(), half: [0.7, 0.25], dynamic: false, material: 'plastic' };
     }
     case 'bottle': {
-      const glass = new THREE.MeshPhysicalMaterial({ color: 0x3f6a3a, roughness: 0.1, transmission: 0.4, thickness: 0.02 });
+      const glass = new THREE.MeshStandardMaterial({ color: 0x3f6a3a, roughness: 0.1, transparent: true, opacity: 0.8 });
       B.add(glass, cyl(0.04, 0.04, 0.2, 0, 0.1, 0, 10), cyl(0.015, 0.035, 0.08, 0, 0.24, 0, 10));
       return { group: B.build(), half: [0.05, 0.14], dynamic: true, material: 'glass' };
     }
@@ -78,7 +78,7 @@ function builtProp(kind: PropKind, seed = 1): Prop {
 export function pickupMesh(kind: string): THREE.Group {
   const B = new Batch();
   const col: Record<string, number> = { ammo_9mm: 0x4a5a3a, ammo_shells: 0x7a2a22, ammo_rifle: 0x3a4a5a, medkit: 0xd8d4c8, bandage: 0xd8ccb0, food: 0x9aa0a0, water: 0x5f8faa, scrap: 0x6a6e66, cloth: 0x8a7a5a, battery: 0x2a2a2a, bottle: 0x3f6a3a };
-  if (kind === 'water') B.add(new THREE.MeshPhysicalMaterial({ color: 0x9fd0ea, roughness: 0.1, transmission: 0.5, thickness: 0.05 }), cyl(0.06, 0.06, 0.28, 0, 0.14, 0, 12));
+  if (kind === 'water') B.add(new THREE.MeshStandardMaterial({ color: 0x9fd0ea, roughness: 0.1, transparent: true, opacity: 0.75 }), cyl(0.06, 0.06, 0.28, 0, 0.14, 0, 12));
   else if (kind === 'food') B.add(M.paint(0x9aa0a0, 0.35), cyl(0.07, 0.07, 0.12, 0, 0.06, 0, 14));
   else B.add(M.paint(col[kind] ?? 0x777777, 0.6), box(0.3, 0.16, 0.2, 0, 0.08, 0));
   if (kind === 'medkit') B.add(M.emissive(0xb0302a, 0.4), box(0.12, 0.04, 0.02, 0, 0.1, 0.105), box(0.04, 0.12, 0.02, 0, 0.1, 0.105));
