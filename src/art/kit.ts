@@ -96,6 +96,11 @@ export const M = {
     const t = TX.signTexture(text, { bg, fg });
     return new THREE.MeshStandardMaterial({ map: t, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: glow, roughness: 0.75 });
   }),
+  ivy: (seed = 1) => std(`ivy${seed}`, () => new THREE.MeshStandardMaterial({ map: TX.ivy(seed), alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.55 })),
+  poster: (seed = 1) => std(`poster${seed}`, () => new THREE.MeshStandardMaterial({ map: TX.poster(seed), alphaTest: 0.3, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2 })),
+  grime: (seed = 1) => std(`grime${seed}`, () => new THREE.MeshBasicMaterial({ map: TX.grime(seed), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1 }) as unknown as THREE.MeshStandardMaterial),
+  /** Unlit silhouette colour for far layers (fog does the atmospheric perspective). */
+  silhouette: (color: number) => std(`sil${color}`, () => new THREE.MeshBasicMaterial({ color }) as unknown as THREE.MeshStandardMaterial),
   emissive: (color: number, intensity = 3) => std(`emis${color}${intensity}`, () => new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: intensity, roughness: 0.4 })),
 };
 

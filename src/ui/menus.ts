@@ -53,7 +53,7 @@ export function settingsScreen(S: ScreenStack, s: Settings, input: Input, apply:
   const tabs = h('div.tabs'), body = h('div.tabbody');
   const sections: [string, () => HTMLElement[]][] = [
     ['Audio', () => [range('Master', 'master'), range('Music', 'music'), range('Effects', 'sfx'), range('Ambience', 'ambience'), range('Voice / radio', 'voice')]],
-    ['Video', () => [select('Quality', 'quality', [['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]), select('Pixel-art filter', 'pixel', [[0, 'Off (HD)'], [2, '2 px'], [3, '3 px'], [4, '4 px']]),
+    ['Video', () => [select('Quality', 'quality', [['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]), select('Pixel-art filter', 'pixel', [[-1, 'Auto (pixel art)'], [0, 'Off (HD)'], [2, '2 px'], [3, '3 px'], [4, '4 px']]),
       check('Auto-adjust quality on slow devices', 'autoQuality'), check('Rain', 'rain'), range('Screen shake', 'shake'), check('Squad name tags', 'nameTags'), check('Show FPS', 'showFps')]],
     ['Controls', () => [select('Touch controls', 'touch', [['auto', 'Auto'], ['on', 'On'], ['off', 'Off']]), ...bindingRows(input), h('div.row', {}, h('button', { onclick: () => { input.resetBindings(); show(2); } }, 'Reset to defaults'))]],
   ];

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { WetReflections } from '../render/wet';
 import * as planck from 'planck';
 import { Actor, idle, type Host, type Intent } from './actor';
 import { InfectedBrain, PlayerBrain, SquadBrain, type AIWorld, type Brain } from './brains';
@@ -47,7 +48,7 @@ export class Game implements Host, AIWorld {
   readonly world: planck.World;
   readonly built: BuiltWorld;
   readonly lights: LightPool;
-  readonly fx: Fx; readonly rain: Rain; readonly cam = new CameraRig();
+  readonly fx: Fx; readonly rain: Rain; readonly cam = new CameraRig(); readonly wet: WetReflections;
   readonly rng: Rng;
   readonly squad: Actor[] = []; readonly infected: Actor[] = [];
   readonly stash: Stash;
@@ -72,6 +73,7 @@ export class Game implements Host, AIWorld {
     this.built = buildWorld(level, r.scene, this.world);
     this.lights.set(this.built.lights);
     this.fx = new Fx(r.scene); this.rain = new Rain(r.scene);
+    this.wet = new WetReflections(r.scene);
     this.checkpointX = save?.checkpoint ?? level.spawnX;
     this.stash = new Stash(save?.stash ?? { ammo_rifle: 36, ammo_9mm: 24, ammo_shells: 8, bandage: 1, food: 1, water: 1, bottle: 1 });
     if (save) { save.looted.forEach((x) => this.looted.add(x)); save.picked.forEach((x) => this.picked.add(x)); save.killed.forEach((x) => this.killed.add(x)); save.objectives.forEach((x) => this.objectives.add(x)); save.seenBeats.forEach((x) => this.seenBeats.add(x)); }
@@ -362,7 +364,7 @@ export class Game implements Host, AIWorld {
       const it: Intent = this.ended && a.team === 'squad' ? idle() : this.brains.get(a.id)!.think(a, this, dt);
       a.step(dt, it, this, this.x0, this.x1);
     }
-    if (this.player.frame) this.player.frame = { held: this.player.frame.held, pressed: new Set(), moveX: this.player.frame.moveX };
+    if (this.player.frame) this.player.frame = { ...this.player.frame, pressed: new Set() };
     this.stepUse(dt);
     this.stepNeeds(dt);
     this.stepPickups();
@@ -426,7 +428,7 @@ export class Game implements Host, AIWorld {
     void alpha;
     const L = this.leader;
     this.cam.update(dt, L.x, L.facing, L.vx, this.r.halfWidth, this.x0, this.x1, this.time);
-    this.r.focus.set(this.cam.x, 1.9, 0);
+    this.r.focus.set(this.cam.x, 2.0, 0);
     this.r.shakeOffset.set(this.cam.offset.x, this.cam.offset.y, this.cam.offset.roll);
     audio.listenerX = this.cam.x;
     this.lights.update(this.cam.x, this.time);
@@ -443,6 +445,8 @@ export class Game implements Host, AIWorld {
     for (const l of this.lures) { const p = l.body.getPosition(); l.mesh.position.set(p.x, p.y, 0.2); l.mesh.rotation.z = l.body.getAngle(); }
     for (const p of this.pickups) if (!this.picked.has(p.id)) { p.mesh.rotation.y += dt * 1.5; p.mesh.position.y = 0.05 + Math.sin(this.time * 2 + p.x) * 0.04; }
     if (this.built.beacon) (this.built.beacon as THREE.Mesh).visible = Math.sin(this.time * 3) > 0;
+    this.built.blinkers.forEach((b, i) => { b.material.opacity = Math.sin(this.time * 2.2 + i * 1.7) > 0.2 ? 0.95 : 0.12; });
+    this.wet.update(this.cam.x, this.time);
     audio.setIntensity(this.intensity);
   }
 
@@ -473,6 +477,7 @@ export class Game implements Host, AIWorld {
   }
 
   dispose(): void {
+    this.wet.dispose();
     this.r.scene.clear();
     this.ev.clear();
   }

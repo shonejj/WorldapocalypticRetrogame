@@ -97,7 +97,11 @@ export function targetPose(i: AnimIn, p: Pose = zeroPose()): Pose {
     p.lean -= i.gait === 'brute' ? 0.22 : i.gait === 'sprint' ? 0.42 : 0.32;
     p.neck += 0.35 + lurch * 0.12;
     if (i.gait === 'sprint' && moving) { p.shF = -1.0 * Math.sin(φ) + 0.6; p.shB = 1.0 * Math.sin(φ) + 0.6; p.elF = p.elB = 1.1; }
-    else { p.shF = 1.05 + Math.sin(φ + 0.4) * 0.2; p.shB = 0.85 + Math.sin(φ + 1.6) * 0.2; p.elF = 0.2; p.elB = 0.35; }
+    else if (i.run) { p.shF = 0.95 + Math.sin(φ + 0.4) * 0.25; p.shB = 0.75 + Math.sin(φ + 1.6) * 0.25; p.elF = 0.3; p.elB = 0.45; }   // chasing: grasping forward
+    else {   // unaware: hunched, arms hanging loose and swaying (reference posture, not "zombie arms")
+      p.lean -= 0.12; p.neck += 0.12;
+      p.shF = 0.32 + Math.sin(φ + 0.4) * 0.14 + Math.sin(i.t * 1.3) * 0.05; p.shB = 0.18 + Math.sin(φ + 1.6) * 0.12; p.elF = 0.35; p.elB = 0.25;
+    }
     p.knB *= 0.45;                                       // stiff dragging leg
     if (i.attack > 0) { const k = Math.sin(Math.min(1, i.attack) * Math.PI); p.lean -= 0.35 * k; p.shF = 1.1 + 1.6 * k; p.shB = 1.0 + 1.3 * k; p.elF = p.elB = 0.15; }
     if (i.hurt > 0) { p.lean += 0.3 * i.hurt; p.neck -= 0.4 * i.hurt; }

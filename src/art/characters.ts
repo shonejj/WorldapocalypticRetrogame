@@ -26,6 +26,27 @@ const boxm = (w: number, h: number, d: number, mat: THREE.Material, x: number, y
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); m.castShadow = true; return m;
 };
 
+/**
+ * Character readability (art pass 2): a camera-space Fresnel rim + a small self-fill on every
+ * character material, so survivors and infected keep a readable silhouette against bright shop
+ * windows and black alleys alike (the reference's rim-lit figures). One shared uniform set.
+ */
+export const RIM = { uRimColor: { value: new THREE.Color(0.42, 0.52, 0.62) }, uRimPow: { value: 2.6 }, uFill: { value: 0.16 } };
+const rimmed = new WeakSet<THREE.Material>();
+export function rimify(mat: THREE.Material): void {
+  const m = mat as THREE.MeshStandardMaterial;
+  if (rimmed.has(m) || !m.isMeshStandardMaterial) return;
+  rimmed.add(m);
+  m.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, RIM);
+    sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRimColor; uniform float uRimPow; uniform float uFill;')
+      .replace('#include <opaque_fragment>', `{ float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), uRimPow);
+        outgoingLight += uRimColor * rimF * 0.55 + diffuseColor.rgb * uFill; }
+      #include <opaque_fragment>`);
+  };
+  m.customProgramCacheKey = () => 'rim';
+}
+
 const skinMats = new Map<string, THREE.MeshStandardMaterial>();
 function skinMat(c: number, infected: boolean): THREE.MeshStandardMaterial {
   const k = `${c}${infected}`; let m = skinMats.get(k);
@@ -59,7 +80,9 @@ export class CharacterView {
 
     // torso (pivot at hips, extends up)
     const tw = 0.17 * b;
-    P.torso.add(capsule(tw, SEG.torso - 0.18, look.topStyle === 'tshirt' ? shirt : top, SEG.torso / 2, 1, 0.68));
+    P.torso.add(capsule(tw, SEG.torso - 0.18, look.topStyle === 'tshirt' ? shirt : top, SEG.torso / 2, 0.82, 1.15));
+    const chest = new THREE.Mesh(new THREE.SphereGeometry(tw * 1.02, 14, 10), look.topStyle === 'tshirt' ? shirt : top);   // shoulder girdle
+    chest.position.set(0.015, SEG.torso * 0.72, 0); chest.scale.set(0.95, 0.8, 1.35); P.torso.add(chest);
     P.torso.add(capsule(tw * 0.96, 0.1, pants, 0.02, 1, 0.66));                              // hips
     if (look.build && look.build > 1.3) P.torso.add(new THREE.Mesh(new THREE.SphereGeometry(0.24 * b * 0.75, 14, 10), look.infected ? skin : shirt).translateY(0.22).translateX(0.06));
     if (look.topStyle === 'vest') P.torso.add(boxm(0.27 * b, 0.36, 0.3 * b, top, 0, 0.3));
@@ -69,8 +92,9 @@ export class CharacterView {
     if (look.scarf !== undefined) P.torso.add(new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.04, 6, 12), cloth(look.scarf)).rotateX(Math.PI / 2).translateZ(-0.5));
     if (look.backpack !== undefined) {
       const bp = cloth(look.backpack);
-      P.torso.add(boxm(0.18, 0.4, 0.3, bp, -0.2 * b, 0.3), boxm(0.06, 0.18, 0.26, bp, -0.3 * b, 0.2));
-      P.torso.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.34, 10), cloth(0x5a5a46)).rotateX(Math.PI / 2).translateY(0.52).translateX(-0.2 * b));   // bedroll
+      P.torso.add(boxm(0.24, 0.5, 0.34, bp, -0.25 * b, 0.33), boxm(0.2, 0.1, 0.32, bp, -0.24 * b, 0.62), boxm(0.07, 0.2, 0.26, bp, -0.39 * b, 0.22));   // hiking pack, lid, front pocket
+      P.torso.add(boxm(0.03, 0.42, 0.05, cloth(0x2a2620), -0.12 * b, 0.32, 0.12), boxm(0.03, 0.42, 0.05, cloth(0x2a2620), -0.12 * b, 0.32, -0.12));   // straps
+      P.torso.add(new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.4, 10), cloth(0x5a5a46)).rotateX(Math.PI / 2).translateY(0.62).translateX(-0.24 * b));   // bedroll
     }
     // head (pivot at neck)
     const head = new THREE.Group(); P.head.add(head);
@@ -135,13 +159,14 @@ export class CharacterView {
     this.root.add(this.shadow);
     this.root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh && m !== this.shadow) { m.castShadow = true; this.meshes.push(m); } });
     this.flashMats.push(skin.clone()); // not shared: used only for flash bookkeeping
+    for (const m of this.meshes) rimify(m.material as THREE.Material);
   }
 
   setWeapon(kind: WeaponKind | null): void {
     if (kind === this.weaponKind) return;
     if (this.weapon) this.gunPivot.remove(this.weapon);
     this.weaponKind = kind; this.weapon = kind ? weaponMesh(kind) : null;
-    if (this.weapon) this.gunPivot.add(this.weapon);
+    if (this.weapon) { this.gunPivot.add(this.weapon); this.weapon.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) rimify(m.material as THREE.Material); }); }
   }
 
   /** Living pose. x,y = feet position. */
@@ -157,7 +182,7 @@ export class CharacterView {
     P.upperArmB.rotation.z = p.shB; P.foreArmB.rotation.z = p.elB;
     P.thighF.rotation.z = p.thF; P.shinF.rotation.z = p.knF;
     P.thighB.rotation.z = p.thB; P.shinB.rotation.z = p.knB;
-    if (holstered) { this.gunPivot.position.set(-0.24, 0.3, -0.02); this.gunPivot.rotation.z = -1.25; }
+    if (holstered) { this.gunPivot.position.set(-0.36, 0.2, -0.2); this.gunPivot.rotation.z = 1.85; }      // slung behind the pack, muzzle over the shoulder
     else { this.gunPivot.position.set(0.04, SEG.shoulderAt - 0.06 + p.gunY, 0.14); this.gunPivot.rotation.z = p.gun; }
     this.shadow.visible = true; this.shadow.scale.set(1 + p.lie * 1.4, 1, 0.45);
   }
@@ -206,14 +231,14 @@ function hipFrom(p: Pose): number {
 
 // ---------------------------------------------------------------- the cast
 export const LOOKS = {
-  reed: { seed: 11, skin: 0xc08a68, hair: 0x1e1612, hairStyle: 'messy', beard: true, top: 0x55603a, topStyle: 'jacket', shirt: 0x5a5f62, pants: 0x3a4148, boots: 0x4a3322, gloves: 0x2a2a28, backpack: 0x5e4c32 },
-  maya: { seed: 23, skin: 0xa8725a, hair: 0x241812, hairStyle: 'ponytail', top: 0x6a3c36, topStyle: 'hoodie', shirt: 0xb8b0a0, pants: 0x2e3a4e, boots: 0x3a2a1e, backpack: 0x7a2e2a, mask: 0xc9d6d8 },
-  miller: { seed: 37, skin: 0xd29a7a, hair: 0xa29c92, hairStyle: 'buzz', beard: true, headwear: 'cap', top: 0x7a6a44, topStyle: 'vest', shirt: 0x4a5058, pants: 0x5a5238, boots: 0x3a2a1a, gloves: 0x5a4a32, backpack: 0x4a4a3a, build: 1.12 },
-  iris: { seed: 41, skin: 0xe0b090, hair: 0x121214, hairStyle: 'long', headwear: 'headphones', top: 0x34465e, topStyle: 'jacket', shirt: 0x8a8a7a, pants: 0x6a6048, boots: 0x2a2622, backpack: 0x3d4a3a, scarf: 0x2f4a52, build: 0.92 },
+  reed: { seed: 11, skin: 0xc08a68, hair: 0x1e1612, hairStyle: 'messy', beard: true, top: 0x444a36, topStyle: 'jacket', shirt: 0x5a5f62, pants: 0x4a5058, boots: 0x4a3322, gloves: 0x2a2a28, backpack: 0x5e4c32 },
+  maya: { seed: 23, skin: 0xa8725a, hair: 0x241812, hairStyle: 'ponytail', top: 0x8e2e28, topStyle: 'jacket', shirt: 0xb8b0a0, pants: 0x585a5c, boots: 0x3a2a1e, backpack: 0x7a2e2a, mask: 0xc9d6d8 },
+  miller: { seed: 37, skin: 0xd29a7a, hair: 0xd6d2c8, hairStyle: 'buzz', beard: true, headwear: 'cap', top: 0x8c7c52, topStyle: 'coat', shirt: 0x4a5058, pants: 0x5a5644, boots: 0x3a2a1a, gloves: 0x5a4a32, backpack: 0x4a4a3a, build: 1.12 },
+  iris: { seed: 41, skin: 0xc89a7a, hair: 0x121214, hairStyle: 'long', headwear: 'headphones', top: 0x5a4878, topStyle: 'hoodie', shirt: 0x8a8a7a, pants: 0x8a7a5c, boots: 0x2a2622, backpack: 0x3d4a3a, scarf: 0x2f4a52, build: 0.92 },
 } satisfies Record<string, Look>;
 
-const INFECTED_SKIN = [0xa6ad98, 0x9aa08c, 0xb4b6a2, 0x8e9684];
-const INFECTED_CLOTH = [0x4a4238, 0x3a4450, 0x5a3530, 0x3e4a3a, 0x5e5850, 0x2c2c30];
+const INFECTED_SKIN = [0xa8908a, 0x9c8682, 0xb39a90, 0x8f8480, 0x9a948a];   // bloodless grey-pink (reference)
+const INFECTED_CLOTH = [0x4a4238, 0x3a4450, 0x6a3a32, 0x3e4a3a, 0x6e6658, 0x2c2c30, 0x7a6e5a];
 export function infectedLook(kind: 'common' | 'runner' | 'brute', seed: number): Look {
   const R = new Rng(seed);
   return {

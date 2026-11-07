@@ -48,6 +48,7 @@ class App {
     this.timer.connect(document);
     engine.pauseOnDocumentHidden = true;
     this.input.onDevice = () => this.updateTouch();
+    this.input.toWorldX = (cx, cy) => this.r.toWorldX(cx, cy);
     this.apply(this.settings);
     addEventListener('pointerdown', () => audio.unlock()); addEventListener('keydown', () => audio.unlock());
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.game && !this.screens.open) this.pause(); });
@@ -61,7 +62,7 @@ class App {
     Object.assign(audio.volumes, { master: s.master, music: s.music, sfx: s.sfx, ambience: s.ambience, voice: s.voice, ui: s.sfx * 0.8 });
     audio.applyVolumes(); audio.setRain(s.rain);
     this.r.setQuality({ ...QUALITY_PRESETS[s.quality], pixel: s.pixel });
-    if (this.game) { this.game.rain.enabled = s.rain; this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; }
+    if (this.game) { this.game.rain.enabled = s.rain; this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; this.game.wet.setEnabled(QUALITY_PRESETS[s.quality].reflections); }
     if (this.hud) this.hud.tagsOn = s.nameTags;
     this.fps.classList.toggle('hidden', !s.showFps);
     this.updateTouch();

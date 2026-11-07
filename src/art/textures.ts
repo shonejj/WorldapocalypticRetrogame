@@ -119,7 +119,7 @@ export function plaster(tint = '#8a8170', seed = 3): PbrMaps {
     const N = 512, f = new Field(N), base = hex(tint), brickC = hex('#6b3f33');
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const n = tfbm(x / 48, y / 48, N / 48, 5, seed), peel = tfbm(x / 120, y / 120, 4, 4, seed + 7);
-      const exposed = peel > 0.62;
+      const exposed = peel > 0.7;
       const streak = Math.max(0, tnoise(x / 5, y / 400, N / 5, seed + 13) - 0.55) * 2 * (y / N);
       if (exposed) {
         const by = Math.floor(y / 24), bx = Math.floor((x + (by % 2) * 24) / 48), gap = y % 24 < 3 || (x + (by % 2) * 24) % 48 < 3;
@@ -166,7 +166,7 @@ export function rust(tint = '#5c6468', seed = 6): PbrMaps {
     const N = 256, f = new Field(N), base = hex(tint), rc = hex('#8a4a26');
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const r = tfbm(x / 40, y / 40, N / 40, 5, seed), fine = tnoise(x / 2, y / 2, N / 2, seed + 1);
-      const t = Math.min(1, Math.max(0, (r - 0.48) * 3.5));
+      const t = Math.min(1, Math.max(0, (r - 0.58) * 3)) * 0.85;
       f.set(x, y, mul(mixc(base, mul(rc, 0.8 + fine * 0.4), t), 0.85 + fine * 0.25), t * 0.4 + fine * 0.1, 0.45 + t * 0.45);
     }
     return finish(f, { normal: 1.2 });
@@ -294,4 +294,69 @@ export function stripes(a: string, b: string, n = 8): THREE.CanvasTexture {
   for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(30,20,10,${R.next() * 0.18})`; g.fillRect(R.next() * 256, R.next() * 64, 3, 2 + R.next() * 10); }
   const grd = g.createLinearGradient(0, 0, 0, 64); grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, 'rgba(20,10,5,0.45)'); g.fillStyle = grd; g.fillRect(0, 0, 256, 64);
   const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = THREE.RepeatWrapping; cache.set(key, { map: t }); return t;
+}
+
+// ---------------------------------------------------------------- dressing (art pass 2: reference-driven detail)
+const canvasTex = (key: string, w: number, h: number, draw: (g: CanvasRenderingContext2D, R: Rng) => void, seed = 1): THREE.CanvasTexture => {
+  const hit = cache.get(key); if (hit) return hit.map as THREE.CanvasTexture;
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h; draw(cv.getContext('2d')!, new Rng(seed));
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; cache.set(key, { map: t }); return t;
+};
+
+/** Hanging ivy curtain: dense crown fading into thin trailing strands (alpha). Yellow-green like wet overgrowth. */
+export function ivy(seed = 1): THREE.CanvasTexture {
+  return canvasTex(`ivy${seed}`, 128, 256, (g, R) => {
+    const pal = ['#3c4f1c', '#55692a', '#6f8034', '#8c9440', '#a7a24a', '#2c3a16'];
+    const strands = 7 + R.int(0, 5);
+    for (let k = 0; k < strands; k++) {
+      let x = 10 + R.next() * 108; const len = 60 + R.next() * 190;
+      for (let y = 0; y < len; y += 2.5) {
+        x += (R.next() - 0.5) * 2.2; const dens = 1 - y / len, r = 2 + dens * 6;
+        const n = 1 + Math.floor(dens * 3);
+        for (let i = 0; i < n; i++) { g.fillStyle = pal[R.int(0, pal.length - 1)]; g.beginPath(); g.ellipse(x + (R.next() - 0.5) * r * 2.4, y + (R.next() - 0.5) * 3, 1.5 + R.next() * 2.4, 1 + R.next() * 1.6, R.next() * 3, 0, Math.PI * 2); g.fill(); }
+      }
+    }
+    for (let i = 0; i < 260; i++) { g.fillStyle = pal[R.int(0, pal.length - 1)]; g.beginPath(); g.ellipse(R.next() * 128, R.next() * 26, 2 + R.next() * 3.5, 1.4 + R.next() * 2, R.next() * 3, 0, Math.PI * 2); g.fill(); }
+  }, seed);
+}
+
+/** Torn, faded street poster / graffiti panel. */
+export function poster(seed = 1): THREE.CanvasTexture {
+  return canvasTex(`poster${seed}`, 128, 160, (g, R) => {
+    const bgs = ['#c9b78f', '#b8473a', '#d9cfb0', '#3e6f8a', '#e0c35a', '#8f8a78'];
+    g.fillStyle = bgs[seed % bgs.length]; g.fillRect(0, 0, 128, 160);
+    const ink = ['#2a1e18', '#8a2a22', '#1e3a52', '#f0e6c8'];
+    if (seed % 3 === 0) { g.fillStyle = ink[1]; g.beginPath(); g.arc(64, 62, 38, 0, Math.PI * 2); g.fill(); g.fillStyle = '#f0e6c8'; g.font = 'italic 900 26px Georgia, serif'; g.textAlign = 'center'; g.fillText('MISSING', 64, 70); }
+    else if (seed % 3 === 1) { g.fillStyle = ink[0]; g.fillRect(14, 16, 100, 70); g.fillStyle = bgs[(seed + 2) % bgs.length]; g.beginPath(); g.arc(64, 44, 18, 0, Math.PI * 2); g.fill(); g.fillRect(40, 62, 48, 24); }
+    else { g.strokeStyle = ink[2]; g.lineWidth = 9; g.beginPath(); g.moveTo(30, 30); g.lineTo(98, 100); g.moveTo(98, 30); g.lineTo(30, 100); g.stroke(); }
+    g.fillStyle = ink[0]; for (let i = 0; i < 6; i++) g.fillRect(16, 104 + i * 8, 40 + R.next() * 56, 3);
+    g.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 14; i++) { g.beginPath(); const x = R.next() * 128, y = R.chance(0.5) ? R.next() * 20 : 140 + R.next() * 20; g.moveTo(x, y); g.lineTo(x + 20 * R.next(), y + 30 * (R.next() - 0.5)); g.lineTo(x - 15 * R.next(), y + 20 * R.next()); g.fill(); }
+    for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(0,0,0,${R.next() * 0.5})`; g.fillRect(R.next() * 128, R.next() * 160, 1 + R.next() * 3, 1 + R.next() * 2); }
+    g.globalCompositeOperation = 'source-over';
+    const grd = g.createLinearGradient(0, 0, 0, 160); grd.addColorStop(0, 'rgba(30,25,15,0)'); grd.addColorStop(1, 'rgba(30,25,15,0.5)'); g.fillStyle = grd; g.fillRect(0, 0, 128, 160);
+  }, seed);
+}
+
+/** Vertical rain-water stains running down from ledges (multiplied over walls as a decal). */
+export function grime(seed = 1): THREE.CanvasTexture {
+  return canvasTex(`grime${seed}`, 128, 256, (g, R) => {
+    for (let i = 0; i < 40; i++) {
+      const x = R.next() * 128, w = 1 + R.next() * 7, len = 40 + R.next() * 216;
+      const grd = g.createLinearGradient(0, 0, 0, len); grd.addColorStop(0, `rgba(12,14,10,${0.35 + R.next() * 0.4})`); grd.addColorStop(1, 'rgba(12,14,10,0)');
+      g.fillStyle = grd; g.fillRect(x, 0, w, len);
+    }
+    const top = g.createLinearGradient(0, 0, 0, 40); top.addColorStop(0, 'rgba(10,12,8,0.6)'); top.addColorStop(1, 'rgba(10,12,8,0)'); g.fillStyle = top; g.fillRect(0, 0, 128, 40);
+  }, seed);
+}
+
+/** Overcast night cloud bank for the far sky (alpha, lit from below by the city). */
+export function clouds(seed = 1): THREE.CanvasTexture {
+  return canvasTex(`clouds${seed}`, 512, 128, (g, R) => {
+    for (let i = 0; i < 380; i++) {
+      const x = R.next() * 512, y = 20 + R.next() * 90, r = 10 + R.next() * 34, a = 0.05 + R.next() * 0.09;
+      const grd = g.createRadialGradient(x, y, 0, x, y, r); const c = y > 70 ? '88,104,116' : '58,74,88';
+      grd.addColorStop(0, `rgba(${c},${a})`); grd.addColorStop(1, `rgba(${c},0)`); g.fillStyle = grd; g.fillRect(x - r, y - r, r * 2, r * 2);
+    }
+  }, seed);
 }

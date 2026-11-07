@@ -10,7 +10,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #040609; color: var(--text); font-family: var(--sans); font-size: var(--fs); user-select: none; -webkit-user-select: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
-canvas#game { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+canvas#game { cursor: crosshair; position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 .hidden { display: none !important; }
 button { font: inherit; color: var(--text); background: rgba(22, 36, 46, 0.92); border: 1px solid var(--line); border-radius: 4px; padding: 8px 14px; cursor: pointer; }
 button:hover:not([disabled]) { background: #22404e; border-color: var(--accent); }

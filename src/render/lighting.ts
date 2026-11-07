@@ -49,7 +49,7 @@ export class LightPool {
 
   update(camX: number, time: number): void {
     // moon shadow frustum follows the camera
-    this.moon.position.set(camX - 12, 30, 18); this.moon.target.position.set(camX, 0, -2);
+    this.moon.position.set(camX + 10, 26, -22); this.moon.target.position.set(camX, 0, 0);    // back light: rims silhouettes, shadows fall toward camera
     this.key.position.set(camX - 4, 6, 20); this.key.target.position.set(camX, 1, 0);
     this.moon.intensity = 1.1 + this.flash * 4; this.hemi.intensity = 1.1 + this.flash * 1.5;
     const near = this.spots_.filter((s) => s.on !== false && Math.abs(s.x - camX) < 22)
