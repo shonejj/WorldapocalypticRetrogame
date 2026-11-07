@@ -78,6 +78,8 @@ export class Game implements Host, AIWorld {
     this.built = buildWorld(level, r.scene, this.world);
     this.lights.set(this.built.lights);
     this.fx = new Fx(r.scene); this.rain = new Rain(r.scene);
+    // no rain under shop awnings (they stretch ~1.3 m out from the facade, ~3.6 m up)
+    this.rain.cover = level.buildings.filter((b) => b.kind === 'store' || b.kind === 'pharmacy').map((b) => ({ x0: b.x + 0.3, x1: b.x + b.w - 0.3, z0: FACADE_Z, z1: FACADE_Z + 1.35, y: 3.6 }));
     this.wet = new WetReflections(r.scene);
     this.checkpointX = save?.checkpoint ?? level.spawnX;
     this.stash = new Stash(save?.stash ?? { ammo_rifle: 36, ammo_9mm: 24, ammo_shells: 8, bandage: 1, food: 1, water: 1, bottle: 1 });
