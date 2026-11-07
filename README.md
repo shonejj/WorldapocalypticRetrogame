@@ -47,5 +47,5 @@ How it is structured, and which game-dev skill drove each part: [docs/ARCHITECTU
 MIT — see [LICENSE](LICENSE).
 
 ### Third-party assets
-- Character body and animations: **Universal Animation Library** by [Quaternius](https://quaternius.com) — CC0 1.0 (`public/models/LICENSE-Quaternius-UAL-CC0.txt`). Thank you, Quaternius.
+- Characters: **Modular Character Outfits**, **Universal Base Characters** (faces, hair) and **Universal Animation Library** by [Quaternius](https://quaternius.com) — CC0 1.0 (`public/models/chars/LICENSE-*.txt`). Thank you, Quaternius.
 - Props (boxes, crates, barrel, jerrycan, trash bag, tyres, road barrier, AC unit, power box, generator, hanging lamp, covered car): [Poly Haven](https://polyhaven.com) photo-scans — CC0. Guns: Quaternius — CC0. Every file with its author and source: `public/models/LICENSES-CC0.csv`.

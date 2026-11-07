@@ -94,7 +94,7 @@ class App {
     goLandscape();
     this.screens.clear(); this.teardown();
     const loading = h('div.loading', {}, h('div', {}, 'TUNING IN…'), h('div.bar', {}, h('i'))); document.body.append(loading);
-    Promise.all([loadCharacterAsset(`${import.meta.env.BASE_URL}models/survivor.glb`).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
+    Promise.all([loadCharacterAsset(import.meta.env.BASE_URL).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
       .then(() => setTimeout(() => {
       try {
         const g = (this.game = new Game(this.r, CHAPTER1, save, QUALITY_PRESETS[this.settings.quality].shadows));
