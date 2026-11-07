@@ -387,7 +387,7 @@ export class Game implements Host, AIWorld {
     this.stepLures(dt);
     this.stepBeats();
     const hunting = this.infected.filter((z) => z.alive && z.state === 'chase').length;
-    if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) audio.play('alert'); }
+    if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) { audio.play('alert'); audio.stinger(); } }
     const suspicious = Math.max(0, ...this.infected.filter((z) => z.alive && Math.abs(z.x - this.leader.x) < 18).map((z) => z.suspicion));
     this.intensity = Math.max((this.beat?.intensity ?? 0.1) * 0.35, this.alert ? 0.7 + Math.min(0.3, hunting * 0.06) : suspicious * 0.55);
     for (const cp of this.level.checkpoints) if (this.leader.x > cp && this.checkpointX < cp && !this.alert) { this.checkpointX = cp; this.ev.emit('checkpoint', { x: cp }); }

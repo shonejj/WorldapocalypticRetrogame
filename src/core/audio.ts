@@ -53,7 +53,7 @@ export class AudioEngine {
     if (!this.ctx) return;
     this.bus.duck.gain.setTargetAtTime(on ? dbToGain(-11) : 1, this.ctx.currentTime, on ? 0.03 : 0.35);
   }
-  setRain(on: boolean): void { if (this.ctx && this.rainGain) this.rainGain.gain.setTargetAtTime(on ? 0.5 : 0, this.ctx.currentTime, 1); }
+  setRain(on: boolean): void { if (this.ctx && this.rainGain) this.rainGain.gain.setTargetAtTime(on ? 0.17 : 0, this.ctx.currentTime, 1); }
   /** Adaptive music driver: 0 calm, ~0.5 suspicion, 1 combat. */
   setIntensity(v: number): void { this.intensity = Math.max(0, Math.min(1, v)); }
 
@@ -63,10 +63,10 @@ export class AudioEngine {
 
   private startAmbience(): void {
     const ctx = this.ctx!, amb = this.bus.ambience;
-    const rain = ctx.createGain(); rain.gain.value = 0.5; rain.connect(amb); this.rainGain = rain;
+    const rain = ctx.createGain(); rain.gain.value = 0.17; rain.connect(amb); this.rainGain = rain;   // rain sits under everything (was too loud)
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 0.35; bp.connect(rain);
     this.noise(bp, true).start();
-    const hiss = ctx.createBiquadFilter(); hiss.type = 'highpass'; hiss.frequency.value = 6000; const hg = ctx.createGain(); hg.gain.value = 0.18; hiss.connect(hg); hg.connect(rain);
+    const hiss = ctx.createBiquadFilter(); hiss.type = 'highpass'; hiss.frequency.value = 6000; const hg = ctx.createGain(); hg.gain.value = 0.07; hiss.connect(hg); hg.connect(rain);
     this.noise(hiss, true, 1.3).start();
     const wind = ctx.createGain(); wind.gain.value = 0.22; wind.connect(amb);
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300; lp.connect(wind);
@@ -82,13 +82,18 @@ export class AudioEngine {
     const ctx = this.ctx!, m = this.bus.music;
     const layer = () => { const g = ctx.createGain(); g.gain.value = 0; g.connect(m); return g; };
     this.layers = { drone: layer(), tension: layer(), combat: layer() };
-    // drone: detuned saws through a slowly breathing low-pass (A minor-ish: A1 + E2)
-    for (const [f, det] of [[55, -6], [55, 7], [82.4, 3]] as const) {
-      const o = ctx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.detune.value = det;
-      const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = 280; flt.Q.value = 2;
-      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.045 + Math.random() * 0.02; const lg = ctx.createGain(); lg.gain.value = 140; lfo.connect(lg); lg.connect(flt.frequency); lfo.start();
-      const g = ctx.createGain(); g.gain.value = 0.05; o.connect(flt); flt.connect(g); g.connect(this.layers.drone); o.start();
+    // dread bed: a minor-second cluster (A1 + B♭1) and a sub, through a slowly breathing low-pass —
+    // unresolved, never a melody; plus a filtered-noise "breath" that swells and sinks
+    for (const [f, det, gain] of [[55, -5, 0.05], [58.27, 4, 0.04], [27.5, 0, 0.09], [82.4, -12, 0.018]] as const) {
+      const o = ctx.createOscillator(); o.type = f < 30 ? 'sine' : 'sawtooth'; o.frequency.value = f; o.detune.value = det;
+      const flt = ctx.createBiquadFilter(); flt.type = 'lowpass'; flt.frequency.value = 220; flt.Q.value = 3;
+      const lfo = ctx.createOscillator(); lfo.frequency.value = 0.03 + Math.random() * 0.03; const lg = ctx.createGain(); lg.gain.value = 120; lfo.connect(lg); lg.connect(flt.frequency); lfo.start();
+      const g = ctx.createGain(); g.gain.value = gain; o.connect(flt); flt.connect(g); g.connect(this.layers.drone); o.start();
     }
+    const br = ctx.createBiquadFilter(); br.type = 'bandpass'; br.frequency.value = 700; br.Q.value = 9;
+    const bg = ctx.createGain(); bg.gain.value = 0; br.connect(bg); bg.connect(this.layers.drone); this.noise(br, true, 0.5).start();
+    const blfo = ctx.createOscillator(); blfo.frequency.value = 0.07; const bl = ctx.createGain(); bl.gain.value = 0.03; blfo.connect(bl); bl.connect(bg.gain); blfo.start();
+    const sweep = ctx.createOscillator(); sweep.frequency.value = 0.021; const sw = ctx.createGain(); sw.gain.value = 420; sweep.connect(sw); sw.connect(br.frequency); sweep.start();
     // tension: high filtered noise bed (sizzle) that pulses with the beat scheduler
     const tf = ctx.createBiquadFilter(); tf.type = 'bandpass'; tf.frequency.value = 4800; tf.Q.value = 6;
     const tg = ctx.createGain(); tg.gain.value = 0.05; tf.connect(tg); tg.connect(this.layers.tension); this.noise(tf, true, 0.7).start();
@@ -98,6 +103,7 @@ export class AudioEngine {
   /** Call every frame: crossfade layers to intensity and schedule beats ahead (lookahead scheduler). */
   update(): void {
     const ctx = this.ctx; if (!ctx || !this.layers) return;
+    this.ambientEvents();
     const t = ctx.currentTime, I = this.intensity;
     this.layers.drone.gain.setTargetAtTime(0.55 + 0.25 * (1 - I), t, 1.5);
     this.layers.tension.gain.setTargetAtTime(Math.max(0, Math.min(1, (I - 0.15) * 2)) * 0.9, t, 0.8);
@@ -111,10 +117,48 @@ export class AudioEngine {
       if (b % 4 === 0 || (b % 16 === 10)) this.kick(this.layers.combat, bt, b % 8 === 0 ? 1 : 0.6);
       if (b % 16 === 14 || b % 16 === 15) this.kick(this.layers.combat, bt, 0.45, 110);
       if (b % 2 === 1) this.hat(this.layers.combat, bt);
-      // calm: occasional low bell (radio motif A-C-E)
-      if (b % 16 === 0 && Math.random() < 0.5) this.note(this.layers.drone, [220, 261.6, 329.6][Math.floor(Math.random() * 3)], bt, 2.2, 0.035, 'sine');
+      // calm: sparse dissonant low notes (tritone/minor second), never a tune
+      if (b % 16 === 0 && Math.random() < 0.35) this.note(this.layers.drone, [110, 155.6, 116.5, 77.8][Math.floor(Math.random() * 4)], bt, 3.5, 0.03, 'triangle');
+      // heartbeat as danger rises (double thump)
+      if (I > 0.4 && b % 4 === 0) { this.kick(this.layers.tension, bt, 0.35 + I * 0.3, 46); this.kick(this.layers.tension, bt + 0.16, 0.22 + I * 0.2, 42); }
       this.nextBeat += spb / 2;
     }
+  }
+  /** Distant life in the dark: far groans, creaking metal, a rare scream. Call every frame. */
+  private nextEvent = 0;
+  ambientEvents(): void {
+    const ctx = this.ctx; if (!ctx) return;
+    const t = ctx.currentTime; if (t < this.nextEvent) return;
+    this.nextEvent = t + 7 + Math.random() * 14;
+    const r = Math.random(), amb = this.bus.ambience, pan = ctx.createStereoPanner(); pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(amb);
+    if (r < 0.5) {                      // far groan: buzzy voice falling in pitch through a throat-like band-pass
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(120 + Math.random() * 40, t); o.frequency.exponentialRampToValueAtTime(70, t + 1.8);
+      f.type = 'bandpass'; f.frequency.value = 500; f.Q.value = 4; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.05, t + 0.3); g.gain.exponentialRampToValueAtTime(0.0001, t + 2);
+      o.connect(f); f.connect(g); g.connect(pan); o.start(t); o.stop(t + 2.1);
+    } else if (r < 0.85) {              // metal creak: slow FM squeal
+      const o = ctx.createOscillator(), m = ctx.createOscillator(), mg = ctx.createGain(), g = ctx.createGain();
+      o.frequency.value = 300 + Math.random() * 300; m.frequency.value = 7 + Math.random() * 6; mg.gain.value = 60; m.connect(mg); mg.connect(o.frequency);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.018, t + 0.4); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.6);
+      o.connect(g); g.connect(pan); o.start(t); m.start(t); o.stop(t + 1.7); m.stop(t + 1.7);
+    } else {                            // a scream, very far away
+      const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = 'sawtooth'; o.frequency.setValueAtTime(600, t); o.frequency.linearRampToValueAtTime(900, t + 0.4); o.frequency.exponentialRampToValueAtTime(300, t + 1.4);
+      f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 3; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.02, t + 0.1); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5);
+      o.connect(f); f.connect(g); g.connect(pan); o.start(t); o.stop(t + 1.6);
+    }
+  }
+  /** Spotted: a dissonant hit — clustered saws and a noise burst, sharp attack, long tail. */
+  stinger(): void {
+    const ctx = this.ctx; if (!ctx || !this.layers) return;
+    const t = ctx.currentTime, dest = this.bus.music;
+    for (const f of [110, 116.5, 164.8, 233.1]) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), lp = ctx.createBiquadFilter();
+      o.type = 'sawtooth'; o.frequency.value = f; lp.type = 'lowpass'; lp.frequency.setValueAtTime(2400, t); lp.frequency.exponentialRampToValueAtTime(300, t + 2.5);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.06, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
+      o.connect(lp); lp.connect(g); g.connect(dest); o.start(t); o.stop(t + 3);
+    }
+    this.kick(dest, t, 1, 40);
   }
   private note(dest: AudioNode, f: number, t: number, len: number, peak: number, type: OscillatorType): void {
     const ctx = this.ctx!, o = ctx.createOscillator(), g = ctx.createGain();
