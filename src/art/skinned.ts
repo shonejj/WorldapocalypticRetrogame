@@ -95,14 +95,21 @@ function dress(meshes: THREE.SkinnedMesh[], look: Look): void {
 
 // ------------------------------------------------------------------ the view
 const ARM_UP = new THREE.Vector3(1, 0, 0), WORLD_Z = new THREE.Vector3(0, 0, 1);
-const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _v = new THREE.Vector3();
+const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v = new THREE.Vector3();
 
-/** Rotate a bone about a model-space axis (applied after the mixer: hunch, reaching arms). */
-function rotateModelSpace(b: THREE.Object3D, axis: THREE.Vector3, ang: number): void {
-  b.parent!.getWorldQuaternion(_q2);
+/**
+ * Rotate a bone about an axis given in the MODEL's own frame (its forward is +Z, side is +X),
+ * applied after the mixer (hunch, reaching arms, sprint lean). The parent's rotation is accumulated
+ * from local quaternions up to the model root — never from world matrices, which carry the root's
+ * facing turn (±90°) and would twist the body sideways and flip every time the actor turns.
+ */
+function rotateModelSpace(b: THREE.Object3D, model: THREE.Object3D, axis: THREE.Vector3, ang: number): void {
+  _q2.identity();
+  for (let o = b.parent; o && o !== model; o = o.parent) _q2.premultiply(o.quaternion);   // parent rotation in model space
   _q.setFromAxisAngle(axis, ang);
-  // local' = P⁻¹ · Q · P · local   (P = parent world rotation, Q in world space)
-  const P = _q2.clone(); b.quaternion.premultiply(P.clone().invert().multiply(_q).multiply(P));
+  // local' = P⁻¹ · Q · P · local
+  _q3.copy(_q2).invert().multiply(_q).multiply(_q2);
+  b.quaternion.premultiply(_q3);
 }
 
 export class SkinnedView {
@@ -137,7 +144,9 @@ export class SkinnedView {
     this.mixer = new THREE.AnimationMixer(this.model);
     this.root.add(this.model);
     this.root.scale.setScalar(scale * (look.build && look.build > 1.3 ? 1.08 : 1));
-    if (look.build) this.model.scale.set(look.build, 1, Math.min(1.25, look.build));
+    // build is uniform only: a non-uniform scale on a skeleton's parent skews bone matrices and corrupts
+    // any rotation read back from them (the 'exploding' Miller/infected while sprinting)
+    if (look.build && look.build <= 1.3) this.model.scale.setScalar(0.94 + look.build * 0.06);
 
     // pose once (idle) and attach gear in that pose with Object3D.attach (keeps world placement)
     this.play('Idle_Loop', 'lower'); this.play('Idle_Loop', 'upper'); this.mixer.update(0); this.model.updateMatrixWorld(true);
@@ -249,12 +258,12 @@ export class SkinnedView {
     const spine = this.b('DEF-spine001'), neck = this.b('DEF-neck');
     if (inf && !i.dormant) {
       const hunch = i.gait === 'sprint' ? 0.35 : i.gait === 'brute' ? 0.25 : 0.42;
-      rotateModelSpace(spine, ARM_UP, hunch); rotateModelSpace(neck, ARM_UP, -0.25 + Math.sin(i.t * 2.3) * 0.08);
+      rotateModelSpace(spine, this.model, ARM_UP, hunch); rotateModelSpace(neck, this.model, ARM_UP, -0.25 + Math.sin(i.t * 2.3) * 0.08);
       if (i.attack <= 0) {
         const reach = i.run ? -1.25 : -0.35 + Math.sin(i.t * 1.7) * 0.08;
-        for (const s of ['L', 'R'] as const) rotateModelSpace(this.b(`DEF-upper_arm${s}`), ARM_UP, reach + (s === 'L' ? Math.sin(i.t * 2) * 0.1 : 0));
+        for (const s of ['L', 'R'] as const) rotateModelSpace(this.b(`DEF-upper_arm${s}`), this.model, ARM_UP, reach + (s === 'L' ? Math.sin(i.t * 2) * 0.1 : 0));
       }
-    } else if (!inf && this.lowerName === 'Sprint_Loop') rotateModelSpace(spine, ARM_UP, 0.12);
+    } else if (!inf && this.lowerName === 'Sprint_Loop') rotateModelSpace(spine, this.model, ARM_UP, 0.12);
 
     const holstered = !i.drawn && i.melee <= 0;
     if (this.weapon) { const p = holstered ? this.slung : this.weaponMount; if (this.weapon.parent !== p) p.add(this.weapon); }
