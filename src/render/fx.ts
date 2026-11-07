@@ -90,18 +90,18 @@ export class Fx {
 
   update(dt: number): void {
     let n = 0;
-    const keep: P[] = [];
+    let w = 0;                                      // compact in place: no per-frame array (GC hitches)
     for (const p of this.ps) {
       p.life += dt; if (p.life >= p.max) continue;
       const grounded = p.stick && p.y <= 0.012;
       if (!grounded) { p.vy += p.grav * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt; }
       if (p.y < 0.012) { p.y = 0.012; if (p.stick) { p.vx = p.vy = p.vz = 0; p.max = Math.max(p.max, p.life + 5); } else { p.vy *= -0.3; p.vx *= 0.6; } }
-      keep.push(p);
+      this.ps[w++] = p;
       const fade = grounded ? 1 : 1 - p.life / p.max;
       this.m.compose(this.v.set(p.x, p.y, p.z), this.q, this.s.setScalar(p.size));
       this.inst.setMatrixAt(n, this.m); this.inst.setColorAt(n, this.c.setRGB(p.r * (0.3 + 0.7 * fade), p.g * (0.3 + 0.7 * fade), p.b * (0.3 + 0.7 * fade))); n++;
     }
-    this.ps = keep; this.inst.count = n; this.inst.instanceMatrix.needsUpdate = true; if (this.inst.instanceColor) this.inst.instanceColor.needsUpdate = true;
+    this.ps.length = w; this.inst.count = n; this.inst.instanceMatrix.needsUpdate = true; if (this.inst.instanceColor) this.inst.instanceColor.needsUpdate = true;
     for (const g of this.rings) if (g.m.visible) {
       g.t += dt / 0.75; if (g.t >= 1) { g.m.visible = false; continue; }
       const r = g.r * (0.15 + 0.85 * Math.sin(g.t * Math.PI / 2)); g.m.scale.set(r, 1, r * 0.22);

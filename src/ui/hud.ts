@@ -117,27 +117,30 @@ export class Hud {
     this.weight.classList.toggle('heavy', g.stash.weight > g.stash.limit * 0.9);
   }
 
-  /** Per-frame pass for continuously changing values. */
+  /** Per-frame pass for continuously changing values. DOM is only touched when a value changes
+   *  (style/text writes every frame force style recalculation — visible as hitches on phones). */
   update(): void {
+    const txt = (el: HTMLElement, v: string) => { if (el.textContent !== v) el.textContent = v; };
+    const wid = (el: HTMLElement, v: number) => { const s = `${Math.round(v * 1000) / 10}%`; if (el.style.width !== s) el.style.width = s; };
     this.hints();
     const g = this.g, L = g.leader;
     g.squad.forEach((s, i) => {
       const m = this.members[i];
       m.el.classList.toggle('active', i === g.controlled); m.el.classList.toggle('dead', !s.alive);
-      m.hp.style.width = `${(s.hp / s.maxHp) * 100}%`; m.hp.className = s.hp / s.maxHp < 0.35 ? 'low' : s.hp / s.maxHp < 0.6 ? 'mid' : '';
-      m.hunger.style.width = `${s.hunger * 100}%`; m.thirst.style.width = `${s.thirst * 100}%`;
+      wid(m.hp, s.hp / s.maxHp); m.hp.className = s.hp / s.maxHp < 0.35 ? 'low' : s.hp / s.maxHp < 0.6 ? 'mid' : '';
+      wid(m.hunger, s.hunger); wid(m.thirst, s.thirst);
       m.bleed.classList.toggle('hidden', !(s.bleed > 0 && s.alive));
-      m.tag.textContent = !s.alive ? 'DOWN' : i === g.controlled ? 'YOU' : g.hold.on ? 'HOLD' : '';
+      txt(m.tag, !s.alive ? 'DOWN' : i === g.controlled ? 'YOU' : g.hold.on ? 'HOLD' : '');
       const t = this.tags[i], show = this.tagsOn && s.alive && !g.ended;
       t.style.display = show ? '' : 'none';
       if (show) { const p = g.r.toScreen(s.x, 2.15, 0); t.style.transform = `translate(${p.x | 0}px, ${p.y | 0}px) translate(-50%, -100%)`; t.classList.toggle('me', i === g.controlled); }
     });
-    this.status.textContent = L.reloadT >= 0 ? 'RELOADING…' : L.healT >= 0 ? 'PATCHING UP…' : L.drawT >= 0 ? 'DRAWING…' : L.mag === 0 && WEAPONS[L.weapon].ammo ? `EMPTY — ${this.input.label('reload')} TO RELOAD` : L.crouching ? 'SNEAKING' : '';
+    txt(this.status, L.reloadT >= 0 ? 'RELOADING…' : L.healT >= 0 ? 'PATCHING UP…' : L.drawT >= 0 ? 'DRAWING…' : L.mag === 0 && WEAPONS[L.weapon].ammo ? `EMPTY — ${this.input.label('reload')} TO RELOAD` : L.crouching ? 'SNEAKING' : '');
     if (L.mag !== Number(this.ammo.firstChild?.textContent)) this.refreshStash();
     const det = g.detection();
-    this.eyeBar.style.width = `${det * 100}%`;
+    wid(this.eyeBar, det);
     const lit = g.lightAt(L.x) >= 0.3;                       // binary light rule: you are either lit or in shadow
-    this.eyeLbl.textContent = (det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && !lit ? 'HIDDEN' : 'UNSEEN') + (lit ? ' · IN LIGHT' : ' · IN SHADOW');
+    txt(this.eyeLbl, (det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && !lit ? 'HIDDEN' : 'UNSEEN') + (lit ? ' · IN LIGHT' : ' · IN SHADOW'));
     this.eyeLbl.classList.toggle('lit', lit);
     if (g.focus && !g.ended) {
       this.prompt.classList.remove('hidden');

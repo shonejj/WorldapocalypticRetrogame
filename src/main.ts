@@ -107,12 +107,27 @@ class App {
         if (import.meta.env.DEV) (window as unknown as { __game: Game; __app: App }).__game = g;
         (window as unknown as { __app: App }).__app = this;
         this.apply(this.settings);
-        this.r.renderer.compile(this.r.scene, this.r.camera);          // warm shaders before play
+        this.warmUp(g);
       } finally { loading.remove(); }
       this.perf = { t: 0, n: 0, done: false };
       if (!save) introScreen(this.screens, CHAPTER1.name, () => this.updateTouch());     // new game: the broadcast first
       this.updateTouch();
     }, 30));
+  }
+
+  /**
+   * Stutter fix: compile every shader and upload every texture/geometry BEFORE play. Hidden pooled
+   * objects (effects, off-screen actors, loot glints) are shown for a moment and the camera sweeps the
+   * level, so nothing compiles or uploads mid-game (each first-time compile was a visible hitch).
+   */
+  private warmUp(g: Game): void {
+    const r = this.r, hidden: THREE.Object3D[] = [];
+    r.scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    r.renderer.compile(r.scene, r.camera);
+    const fx = r.focus.x, step = Math.max(6, r.halfWidth * 1.6);
+    for (let x = g.x0; x <= g.x1 + step; x += step) { r.focus.x = x; r.camera.updateMatrixWorld(); r.render(0); }
+    r.focus.x = fx;
+    for (const o of hidden) o.visible = false;
   }
 
   private teardown(): void { this.hud?.dispose(); this.hud = null; this.game?.dispose(); this.game = null; this.lines = []; this.pendingChoices = []; audio.duck(false); }

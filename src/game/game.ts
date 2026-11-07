@@ -286,7 +286,7 @@ export class Game implements Host, AIWorld {
     const sx = a.x + a.facing * 0.3, dx = targetX - sx, t = 0.75;
     const body = this.world.createDynamicBody({ position: { x: sx, y: 1.6 }, bullet: true, linearVelocity: { x: dx / t, y: 11 * t * 0.5 + 0.5 }, angularVelocity: -a.facing * 12 });
     body.createFixture(new planck.Circle(0.06), { density: 20, filterCategoryBits: CAT.LURE, filterMaskBits: CAT.GROUND | CAT.PROP, userData: { kind: 'lure', material: 'glass' } as Tag });
-    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.24, 8), new THREE.MeshPhysicalMaterial({ color: 0x3f6a3a, roughness: 0.1, transmission: 0.3 }));
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.24, 8), new THREE.MeshStandardMaterial({ color: 0x3f6a3a, roughness: 0.1, transparent: true, opacity: 0.8 })   /* no transmission: it adds a full extra scene render per frame */);
     this.r.scene.add(mesh); this.lures.push({ body, mesh, t: 0, broke: false });
   }
 
