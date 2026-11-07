@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
-import { RenderPixelatedPass } from 'three/examples/jsm/postprocessing/RenderPixelatedPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -10,7 +9,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 export interface Quality { dpr: number; pixel: number; bloom: boolean; shadows: boolean; reflections: boolean }
 export const QUALITY_PRESETS: Record<'high' | 'medium' | 'low', Quality> = {
   high: { dpr: 1.5, pixel: -1, bloom: true, shadows: true, reflections: true },
-  medium: { dpr: 1.0, pixel: -1, bloom: true, shadows: true, reflections: true },
+  medium: { dpr: 1.0, pixel: -1, bloom: true, shadows: false, reflections: true },   // phones
   low: { dpr: 1.0, pixel: -1, bloom: false, shadows: false, reflections: false },
 };
 
@@ -50,7 +49,6 @@ export class Renderer {
   shakeOffset = new THREE.Vector3();
   /** Close, low camera (art direction: characters ≈ ¼ of screen height, slight upward look). */
   distance = 12.5;
-  private px: RenderPixelatedPass | null = null;
 
   constructor(readonly canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -81,12 +79,10 @@ export class Renderer {
   private buildComposer(): void {
     this.composer?.dispose();
     this.composer = new EffectComposer(this.renderer);
-    this.px = null;
-    if (this.quality.pixel) {
-      const px = (this.px = new RenderPixelatedPass(this.pixelSize(), this.scene, this.camera));
-      px.normalEdgeStrength = 0.18; px.depthEdgeStrength = 0.45;          // dark outlines on silhouettes, soft inner edges
-      this.composer.addPass(px);
-    } else this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Pixel art = render the scene at ~360 rows and let CSS scale it up with nearest-neighbour
+    // (style.css: image-rendering: pixelated). One scene render at a fraction of the pixels — the
+    // cheapest path on phones — instead of RenderPixelatedPass (full-res beauty + normals pass).
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.32, 0.35, 0.92)   // subtle: glow on real light sources only, no flare blobs;
     this.bloom.enabled = this.quality.bloom;
     this.composer.addPass(this.bloom);
@@ -94,28 +90,29 @@ export class Renderer {
     this.composer.addPass(new OutputPass());
   }
 
-  /** Block size: fixed, or auto so the art resolution stays ≈360 rows on any screen. */
-  private pixelSize(): number {
-    if (this.quality.pixel > 0) return this.quality.pixel;
-    const rows = innerHeight * Math.min(devicePixelRatio || 1, this.quality.dpr);
-    return Math.max(2, Math.round(rows / 360));
+  /** Render pixel ratio: pixel-art modes render ≈360 art rows (auto) or 1/n of the screen; HD uses the quality dpr. */
+  private renderRatio(): number {
+    const hd = Math.min(devicePixelRatio || 1, this.quality.dpr);
+    if (this.quality.pixel === 0) return hd;
+    const rows = this.quality.pixel > 0 ? (innerHeight * hd) / this.quality.pixel : 360;
+    return Math.min(hd, rows / innerHeight);
   }
 
   setQuality(q: Quality): void {
-    const rebuild = (q.pixel !== 0) !== (this.quality.pixel !== 0);
+    const shadowsChanged = q.shadows !== this.quality.shadows;
     this.quality = q;
     this.renderer.shadowMap.enabled = q.shadows;
-    this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
-    if (rebuild) this.buildComposer(); else this.bloom.enabled = q.bloom;
+    if (shadowsChanged) this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+    this.bloom.enabled = q.bloom;
     this.resize();
   }
 
   resize(): void {
     const w = innerWidth, h = innerHeight;
-    const dpr = Math.min(devicePixelRatio || 1, this.quality.dpr);
+    const dpr = this.renderRatio();
     this.renderer.setPixelRatio(dpr); this.renderer.setSize(w, h);
     this.composer.setPixelRatio(dpr); this.composer.setSize(w, h);
-    this.px?.setPixelSize(this.pixelSize());
+    this.canvas.classList.toggle('pixelated', this.quality.pixel !== 0);
     this.camera.aspect = w / h;
     // keep enough horizontal coverage on tall/narrow screens (tablets, portrait phones)
     this.camera.fov = w / h < 1.4 ? 46 : w / h < 1.7 ? 40 : 36;

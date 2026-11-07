@@ -28,7 +28,7 @@ export class LightPool {
     this.moon = new THREE.DirectionalLight(0xa9c4dc, 1.1);
     this.moon.position.set(-12, 30, 18);
     this.moon.castShadow = shadows;
-    this.moon.shadow.mapSize.set(2048, 2048);
+    this.moon.shadow.mapSize.set(1024, 1024);
     const c = this.moon.shadow.camera; c.left = -22; c.right = 22; c.top = 16; c.bottom = -10; c.near = 1; c.far = 80;
     this.moon.shadow.bias = -0.0005; this.moon.shadow.normalBias = 0.03;
     // soft frontal key from the camera side: keeps characters readable against bright backgrounds (art brief: rim/readability)

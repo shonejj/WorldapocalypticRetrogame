@@ -50,8 +50,8 @@ export class WetReflections {
   enabled = false;
 
   constructor(private scene: THREE.Scene, y = -0.14) {
-    const s = Math.min(devicePixelRatio || 1, 1.5) * 0.5;
-    this.reflector = new Reflector(new THREE.PlaneGeometry(400, 80), { textureWidth: Math.round(innerWidth * s), textureHeight: Math.round(innerHeight * s), clipBias: 0.01, multisample: 0 });
+    // the scene renders at ≈360 rows in pixel-art mode; a 480×270 mirror is plenty and cheap on phones
+    this.reflector = new Reflector(new THREE.PlaneGeometry(400, 80), { textureWidth: 480, textureHeight: 270, clipBias: 0.01, multisample: 0 });
     this.reflector.rotation.x = -Math.PI / 2; this.reflector.position.y = y;
     // draw nothing ourselves; we only need its onBeforeRender pass, before the ground draws
     const texMat = (this.reflector.material as THREE.ShaderMaterial).uniforms.textureMatrix.value as THREE.Matrix4;
@@ -63,6 +63,7 @@ export class WetReflections {
       if (sc.overrideMaterial) return;                         // skip the pixel pass's normal render
       const hidden: THREE.Object3D[] = [];
       for (const o of NO_REFLECT) if (o.visible) { o.visible = false; hidden.push(o); }   // no halos/rain mirrored as floating flares
+      WET.uRefl.value = blank;                                   // never sample the target we are drawing into (feedback loop)
       orig(r, sc, cam, geo, mat, grp);
       for (const o of hidden) o.visible = true;
       const tm = (this.reflector as unknown as { getRenderTarget(): THREE.WebGLRenderTarget }).getRenderTarget();

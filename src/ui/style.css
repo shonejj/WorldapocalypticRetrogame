@@ -10,6 +10,7 @@
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #040609; color: var(--text); font-family: var(--sans); font-size: var(--fs); user-select: none; -webkit-user-select: none; touch-action: none; -webkit-tap-highlight-color: transparent; }
+canvas#game.pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
 canvas#game { cursor: crosshair; position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
 .hidden { display: none !important; }
 button { font: inherit; color: var(--text); background: rgba(22, 36, 46, 0.92); border: 1px solid var(--line); border-radius: 4px; padding: 8px 14px; cursor: pointer; }
@@ -132,3 +133,9 @@ body.touch-on .objectives { top: calc(56px + var(--st)); }
   .inventory { grid-template-columns: 1fr; } .tags .ntag:not(.me) { display: none; }
   .wave { height: 54px; } .screen h1 { font-size: 34px; } .sub { margin: 6px 0 12px; } .menu > button { padding: 8px 14px; }
 }
+
+/* ---------- phones held upright: the game is landscape-only */
+#rotate { display: none; position: fixed; inset: 0; z-index: 100; background: #05080c; color: var(--text); flex-direction: column; align-items: center; justify-content: center; gap: 18px; text-align: center; font-family: var(--mono); letter-spacing: .08em; }
+#rotate .phone { width: 46px; height: 78px; border: 3px solid var(--accent); border-radius: 9px; animation: tilt 2.2s ease-in-out infinite; }
+@keyframes tilt { 0%, 30% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (pointer: coarse) { #rotate { display: flex; } }

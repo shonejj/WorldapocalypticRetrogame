@@ -117,14 +117,17 @@ export class Game implements Host, AIWorld {
   slot(a: Actor): number { let k = 0; for (const s of this.squad) { if (s === this.leader) continue; if (s === a) return k; if (s.alive) k++; } return k; }
   lightAt(x: number): number { return this.lights.lightAt(x); }
   medical(): number { return this.stash.count('medkit') + this.stash.count('bandage'); }
-  ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.stash.count(t) : 0; }
+  ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.ammo(t) : 0; }
   weaponsFree(): boolean { return this.alert || this.time - this.lastShot < 6; }
   cry(z: Actor): void { this.sfx(z.type === 'runner' ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'runner' ? 1 : 0.8); this.noise(z.x, z.type === 'runner' ? NOISE.shout : 7, z); }
   groan(z: Actor): void { this.sfx(z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'brute' ? 0.7 : 0.55); }
 
   // ------------------------------------------------------------------ Host
-  ammo(t: ItemId): number { return this.stash.count(t); }
-  take(t: ItemId, n: number): number { const k = this.stash.take(t, n); this.ev.emit('stash', {}); return k; }
+  /** Story mode (default): reserve ammo never runs out and only attacks hurt; Survival keeps scarcity and needs. */
+  story = true;
+  private endless(t: ItemId): boolean { return this.story && t.startsWith('ammo_'); }
+  ammo(t: ItemId): number { return this.endless(t) ? 999 : this.stash.count(t); }
+  take(t: ItemId, n: number): number { if (this.endless(t)) return n; const k = this.stash.take(t, n); this.ev.emit('stash', {}); return k; }
   sfx(kind: Sfx | 'dryfire' | 'reload' | 'heal' | 'throw', ax: Actor | number, vol = 1): void {
     const x = typeof ax === 'number' ? ax : ax.x;
     audio.play(kind as Sfx, x, typeof ax === 'number' ? vol : ax === this.leader ? 1 : 0.6);
@@ -386,6 +389,7 @@ export class Game implements Host, AIWorld {
   private stepNeeds(dt: number): void {
     for (const s of this.squad) {
       if (!s.alive) continue;
+      if (this.story) { s.bleed = 0; continue; }                     // story: health only drops when attacked
       s.hunger = Math.max(0, s.hunger - NEEDS.hungerRate * dt); s.thirst = Math.max(0, s.thirst - NEEDS.thirstRate * dt);
       let dps = 0;
       if (s.hunger === 0 || s.thirst === 0) dps += NEEDS.starveDps;
@@ -440,7 +444,8 @@ export class Game implements Host, AIWorld {
     this.fx.update(dt);
     for (const a of [...this.squad, ...this.infected]) if (a.alive) this.updateActorView(a, dt);
     this.corpses = this.corpses.filter((c) => {
-      c.view.poseFromBodies((p) => partPivot(c.rd, p), c.rd.facing);
+      c.view.root.visible = Math.abs(partPivot(c.rd, 'torso').x - this.cam.x) < this.r.halfWidth + 3;
+      if (c.view.root.visible) c.view.poseFromBodies((p) => partPivot(c.rd, p), c.rd.facing);
       if (c.age > 600) { c.view.setOpacity(Math.max(0, 1 - (c.age - 600) / 2)); if (c.age > 602) { destroyRagdoll(this.world, c.rd); this.r.scene.remove(c.view.root); c.view.dispose(); return false; } }
       return true;
     });
@@ -466,7 +471,9 @@ export class Game implements Host, AIWorld {
     targetPose(ai, this.tgt);
     blendPose(pose, this.tgt, !sq && a.state === 'waking' ? 3 : 18, dt);
     if (sq) v.setWeapon(a.meleeT >= 0 ? 'pipe' : w.mesh);
-    if (v instanceof SkinnedView) v.animate(ai, dt);
+    // off-screen actors are neither drawn nor animated (skinned meshes skip frustum culling)
+    v.root.visible = Math.abs(a.x - this.cam.x) < this.r.halfWidth + 3;
+    if (v instanceof SkinnedView && v.root.visible) v.animate(ai, dt);
     v.pose(pose, a.x, 0, a.facing, sq && !a.drawn && a.drawT < 0.3 && a.meleeT < 0);
     v.flash(a.hurtT * 0.6);
   }
