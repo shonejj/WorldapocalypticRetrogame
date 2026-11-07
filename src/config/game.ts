@@ -7,7 +7,7 @@ export const GAME = {
   shortTitle: 'Last Frequency',
   tagline: 'Follow the signal. Stay alive.',
   description: 'A narrative 2.5D survival adventure in a world after the outbreak.',
-  version: '0.2.0',
+  version: '0.2.1',
   themeColor: '#070c12',
   backgroundColor: '#040609',
 } as const;

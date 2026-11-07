@@ -11,6 +11,16 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <style>html,body{background:#040609;color:#93a7b0;font-family:system-ui,sans-serif}</style>
+  <script>
+    // Boot guard: if a script/style from a stale cached page is missing after a deploy, reload once.
+    addEventListener('error', function (e) {
+      var t = e.target; if (!t || (t.tagName !== 'SCRIPT' && t.tagName !== 'LINK')) return;
+      try { if (!sessionStorage.getItem('tlf-reloaded')) { sessionStorage.setItem('tlf-reloaded', '1'); location.reload(); return; } } catch (_) {}
+      document.body.innerHTML = '<p style="padding:24px">Could not load the game files. Please refresh the page.</p>';
+    }, true);
+    addEventListener('load', function () { setTimeout(function () { try { sessionStorage.removeItem('tlf-reloaded'); } catch (_) {} }, 4000); });
+  </script>
 </head>
 <body>
   <canvas id="game" aria-label="%GAME_TITLE%"></canvas>
