@@ -144,13 +144,14 @@ export class Game implements Host, AIWorld {
     if (a.team === 'squad') {
       if (Math.abs(a.x - this.leader.x) < 9) audio.play(this.rain.enabled ? 'stepWet' : 'step', a.x, a.running ? 0.9 : a.crouching ? 0.25 : 0.5);
       if (this.rain.enabled && Math.random() < 0.6) this.fx.splash(a.x + a.facing * 0.1, 0.05);
-      this.noise(a.x, a.crouching ? NOISE.crouch : a.running ? NOISE.run : NOISE.walk, null);
+      this.noise(a.x, a.crouching ? NOISE.crouch : a.running ? NOISE.run : NOISE.walk, null, a === this.leader);   // only your own steps are drawn
     } else if (a.type === 'brute') { audio.play('hitConcrete', a.x, 0.8); this.cam.addTrauma(Math.max(0, 0.12 - Math.abs(a.x - this.leader.x) * 0.01)); }
   }
 
   /** Noise stimulus: infected within radius × hearing investigate (stealth through sound). */
-  noise(x: number, radius: number, src: Actor | null): void {
+  noise(x: number, radius: number, src: Actor | null, show = true): void {
     if (radius <= 0) return;
+    if (show && Math.abs(x - this.cam.x) < this.r.halfWidth + radius) this.fx.noiseRing(x, radius, radius >= 15);
     for (const z of this.infected) {
       if (!z.alive || z === src) continue;
       const d = Math.abs(z.x - x), rr = radius * z.infected!.hearing;

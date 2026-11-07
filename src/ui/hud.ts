@@ -106,7 +106,9 @@ export class Hud {
     if (L.mag !== Number(this.ammo.firstChild?.textContent)) this.refreshStash();
     const det = g.detection();
     this.eyeBar.style.width = `${det * 100}%`;
-    this.eyeLbl.textContent = det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && g.lightAt(L.x) < 0.3 ? 'HIDDEN' : 'UNSEEN';
+    const lit = g.lightAt(L.x) >= 0.3;                       // binary light rule: you are either lit or in shadow
+    this.eyeLbl.textContent = (det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && !lit ? 'HIDDEN' : 'UNSEEN') + (lit ? ' · IN LIGHT' : ' · IN SHADOW');
+    this.eyeLbl.classList.toggle('lit', lit);
     if (g.focus && !g.ended) {
       this.prompt.classList.remove('hidden');
       this.promptKey.textContent = this.input.label('interact');

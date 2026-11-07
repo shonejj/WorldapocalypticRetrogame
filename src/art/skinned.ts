@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { Rng } from '../core/math';
 import type { AnimIn, Part, Pose } from '../game/rig';
 import { M } from './kit';
@@ -48,6 +49,7 @@ function clip(name: string, part: 'full' | 'upper' | 'lower' = 'full'): THREE.An
 
 /** Face-only index buffer of the base body (triangles driven by head/neck), cached per sex. */
 const faceIndex = new Map<Sex, THREE.BufferAttribute>();
+const mergedCloth = new Map<Sex, THREE.BufferGeometry>();
 function faceOnly(m: THREE.SkinnedMesh, sex: Sex): void {
   let idx = faceIndex.get(sex);
   if (!idx) {
@@ -130,15 +132,29 @@ export class SkinnedView {
     this.model.traverse((o) => { if ((o as THREE.Bone).isBone) this.bone[o.name] = o as THREE.Bone; });
     const inf = !!look.infected, skin = inf ? INFECTED_SKIN.clone().lerp(new THREE.Color(look.skin), 0.35) : new THREE.Color(look.skin);
     const dirt = (c: number) => (inf ? new THREE.Color(c).lerp(new THREE.Color(0x7a6e60), 0.4) : new THREE.Color(c));   // soiled, faded — still readable at night
-    // clothes: tint each outfit part
+    // clothes: all cloth parts merged into ONE skinned mesh per person (fewer draw calls); each part's
+    // palette colour rides in a vertex colour that the recolour material multiplies in. Bare skin stays separate.
+    const cloth: THREE.SkinnedMesh[] = [];
     this.model.traverse((o) => {
       const m = o as THREE.SkinnedMesh; if (!m.isSkinnedMesh) return;
-      const mat = m.material as THREE.MeshStandardMaterial, n = m.name.toLowerCase();
-      const isSkin = /regular/i.test(mat.name);
-      m.material = isSkin ? tinted(mat, skin, 0.35, 1.4) : n.includes('legs') ? tinted(mat, dirt(look.pants)) : n.includes('feet') ? tinted(mat, dirt(look.boots))
-        : n.includes('arms') ? tinted(mat, dirt(look.topStyle === 'tshirt' || look.topStyle === 'vest' ? look.shirt : look.top)) : tinted(mat, dirt(look.top));
-      this.meshes.push(m); m.castShadow = true; m.frustumCulled = false;
+      const mat = m.material as THREE.MeshStandardMaterial;
+      if (/regular/i.test(mat.name)) { m.material = tinted(mat, skin, 0.35, 1.4); this.meshes.push(m); m.castShadow = true; m.frustumCulled = false; }
+      else cloth.push(m);
     });
+    if (cloth.length) {
+      const partCol = (n: string) => dirt(n.includes('legs') ? look.pants : n.includes('feet') ? look.boots : n.includes('arms') ? (look.topStyle === 'tshirt' || look.topStyle === 'vest' ? look.shirt : look.top) : look.top);
+      let base = mergedCloth.get(sex);
+      if (!base) { const common = Object.keys(cloth[0].geometry.attributes).filter((k) => cloth.every((m) => k in m.geometry.attributes && m.geometry.attributes[k].itemSize === cloth[0].geometry.attributes[k].itemSize) && k !== 'color');
+        base = mergeGeometries(cloth.map((m) => { const g = m.geometry.clone(); for (const k of Object.keys(g.attributes)) if (!common.includes(k)) g.deleteAttribute(k); return g; }), false)!; base.userData.parts = cloth.map((m) => [m.name.toLowerCase(), m.geometry.getAttribute('position').count]); mergedCloth.set(sex, base); }
+      const g = base.clone(), col = new Float32Array(g.getAttribute('position').count * 3); let o = 0;
+      for (const [name, count] of base.userData.parts as [string, number][]) { const c = partCol(name); for (let i = 0; i < count; i++, o++) { col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b; } }
+      g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+      const mat = tinted(cloth[0].material as THREE.Material, 0xffffff, 0.85); mat.vertexColors = true;
+      const merged = new THREE.SkinnedMesh(g, mat); merged.name = 'outfit';
+      cloth[0].parent!.add(merged); merged.bind(cloth[0].skeleton, cloth[0].bindMatrix);
+      for (const m of cloth) m.removeFromParent();
+      merged.castShadow = true; merged.frustumCulled = false; this.meshes.push(merged);
+    }
     // face, eyes, eyebrows from the base body, rebound to this skeleton
     const body = cloneSkinned(KIT!.body[sex].scene), parts: THREE.SkinnedMesh[] = [];
     body.traverse((o) => { if ((o as THREE.SkinnedMesh).isSkinnedMesh) parts.push(o as THREE.SkinnedMesh); });

@@ -35,6 +35,7 @@ button[disabled] { opacity: 0.38; cursor: default; }
 .loc { font-family: var(--mono); letter-spacing: .3em; color: var(--accent); font-size: .9em; } .chapter { color: var(--dim); font-size: .85em; margin: 2px 0 8px; }
 .obj { margin: 3px 0; opacity: .85; } .obj::before { content: '◇ '; color: var(--accent); } .obj.done { color: var(--dim); text-decoration: line-through; } .obj.done::before { content: '◆ '; }
 .stealth { position: absolute; left: 50%; top: calc(var(--pad) + var(--st)); transform: translateX(-50%); text-align: center; }
+.stealth .lbl.lit { color: var(--warn); }
 .stealth .lbl { font-family: var(--mono); font-size: .75em; letter-spacing: .3em; color: var(--dim); }
 .eye { width: 150px; height: 6px; margin: 5px auto 0; background: #17232a; border: 1px solid var(--line); border-radius: 3px; overflow: hidden; }
 .eye i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--warn), var(--danger)); }

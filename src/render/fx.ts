@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { glowTexture } from '../art/textures';
+import { NO_REFLECT } from '../art/kit';
 
 /**
  * Pooled VFX (performance-optimization: no per-shot allocation). One InstancedMesh for all
@@ -18,6 +19,8 @@ export class Fx {
   private tracers: THREE.LineSegments; private tr: { a: THREE.Vector3; b: THREE.Vector3; t: number }[] = [];
   private decals: THREE.Mesh[] = []; private decalI = 0;
   /** soft puffs (gun smoke, manhole steam): pooled sprites that rise, grow and fade */
+  /** noise rings (Mark of the Ninja rule: every sound is drawn with its real reach) */
+  private rings: { m: THREE.Mesh; t: number; r: number }[] = []; private ringI = 0;
   private puffs: { s: THREE.Sprite; t: number; max: number; vx: number; vy: number; grow: number; a: number }[] = []; private puffI = 0;
 
   constructor(scene: THREE.Scene) {
@@ -36,6 +39,11 @@ export class Fx {
     for (let i = 0; i < 48; i++) {
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0x9aa6ae, transparent: true, depthWrite: false, opacity: 0 }));
       sp.visible = false; this.root.add(sp); this.puffs.push({ s: sp, t: 0, max: 1, vx: 0, vy: 0, grow: 1, a: 0.3 });
+    }
+    const rg = new THREE.RingGeometry(0.97, 1, 64); rg.rotateX(-Math.PI / 2);
+    for (let i = 0; i < 24; i++) {
+      const m = new THREE.Mesh(rg, new THREE.MeshBasicMaterial({ color: 0xbfe8f2, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+      m.visible = false; m.renderOrder = 4; this.root.add(m); NO_REFLECT.add(m); this.rings.push({ m, t: 1, r: 1 });
     }
     const dg = new THREE.CircleGeometry(1, 12); dg.rotateX(-Math.PI / 2);
     for (let i = 0; i < 48; i++) {
@@ -61,6 +69,12 @@ export class Fx {
   splash(x: number, z = 0): void { for (let i = 0; i < 4; i++) this.add({ x, y: 0.02, z, vx: (Math.random() - 0.5) * 1.5, vy: 1 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, max: 0.25, size: 0.022, r: 0.6, g: 0.72, b: 0.82, grav: -16 }); }
   casing(x: number, y: number, dir: number, shell = false): void { this.add({ x, y, z: 0.1, vx: -dir * (1 + Math.random()), vy: 2.5 + Math.random(), vz: Math.random(), max: 2, size: shell ? 0.05 : 0.03, r: shell ? 0.8 : 0.9, g: shell ? 0.2 : 0.7, b: 0.15, stick: true }); }
   glass(x: number, y: number): void { for (let i = 0; i < 18; i++) this.add({ x, y, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 3, vz: (Math.random() - 0.5) * 3, max: 1.2, size: 0.03, r: 0.5, g: 0.7, b: 0.55, stick: true }); }
+  /** Draw a sound's reach on the lane: grows to `radius` (capped for readability) and fades. */
+  noiseRing(x: number, radius: number, loud: boolean): void {
+    const g = this.rings[this.ringI++ % this.rings.length];
+    g.r = Math.min(radius, 14); g.t = 0; g.m.visible = true; g.m.position.set(x, 0.03, 0.1);
+    (g.m.material as THREE.MeshBasicMaterial).color.setHex(loud ? 0xffa060 : radius < 3 ? 0x9fc4d4 : 0xbfe8f2);
+  }
   puff(x: number, y: number, z: number, o: { size?: number; vx?: number; vy?: number; life?: number; grow?: number; alpha?: number; color?: number } = {}): void {
     const p = this.puffs[this.puffI++ % this.puffs.length];
     p.s.position.set(x, y, z); p.s.scale.setScalar(o.size ?? 0.3); p.s.visible = true; (p.s.material as THREE.SpriteMaterial).color.setHex(o.color ?? 0x9aa6ae);
@@ -88,6 +102,11 @@ export class Fx {
       this.inst.setMatrixAt(n, this.m); this.inst.setColorAt(n, this.c.setRGB(p.r * (0.3 + 0.7 * fade), p.g * (0.3 + 0.7 * fade), p.b * (0.3 + 0.7 * fade))); n++;
     }
     this.ps = keep; this.inst.count = n; this.inst.instanceMatrix.needsUpdate = true; if (this.inst.instanceColor) this.inst.instanceColor.needsUpdate = true;
+    for (const g of this.rings) if (g.m.visible) {
+      g.t += dt / 0.75; if (g.t >= 1) { g.m.visible = false; continue; }
+      const r = g.r * (0.15 + 0.85 * Math.sin(g.t * Math.PI / 2)); g.m.scale.set(r, 1, r * 0.22);
+      (g.m.material as THREE.MeshBasicMaterial).opacity = 0.75 * (1 - g.t);
+    }
     for (const p of this.puffs) if (p.s.visible) {
       p.t += dt; if (p.t >= p.max) { p.s.visible = false; continue; }
       const k = p.t / p.max; p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.scale.multiplyScalar(1 + p.grow * dt);
