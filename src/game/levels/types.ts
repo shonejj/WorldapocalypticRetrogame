@@ -5,7 +5,9 @@ import type { InfectedType, ItemId } from '../data';
 
 export type Loot = Partial<Record<ItemId, number>>;
 /** A pacing beat (level-design pattern 2): intensity drives adaptive music and spawns. */
-export interface Beat { id: string; x0: number; x1: number; type: 'teach' | 'explore' | 'tension' | 'combat' | 'rest' | 'climax'; intensity: number; ink?: string; title?: string }
+export interface Beat { id: string; x0: number; x1: number; type: 'teach' | 'explore' | 'tension' | 'combat' | 'rest' | 'climax'; intensity: number; ink?: string; title?: string;
+  /** camera moment for this stretch: zoom (distance ×), lift (m, + = higher) */
+  cam?: { zoom?: number; lift?: number } }
 export interface LevelDef {
   id: string; name: string; location: string; x0: number; x1: number; spawnX: number; seed: number;
   buildings: Omit<BuildingSpec, 'seed'>[];

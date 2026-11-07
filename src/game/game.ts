@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { WetReflections } from '../render/wet';
+import { FACADE_Z } from '../art/buildings';
 import * as planck from 'planck';
 import { Actor, idle, type Host, type Intent } from './actor';
 import { InfectedBrain, PlayerBrain, SquadBrain, type AIWorld, type Brain } from './brains';
@@ -13,7 +14,7 @@ import { CharacterView, infectedLook, type Look } from '../art/characters';
 import { SkinnedView, characterAssetReady } from '../art/skinned';
 type View = CharacterView | SkinnedView;
 const makeView = (look: Look, scale = 1): View => (characterAssetReady() ? new SkinnedView(look, scale) : new CharacterView(look, scale));
-import { pickupMesh } from '../art/props';
+import { pickupMesh, lootSpot } from '../art/props';
 import { createWorld, raycast, kick, CAT, type Tag } from '../physics/world';
 import { createRagdoll, destroyRagdoll, partPivot, shove, type Ragdoll } from '../physics/ragdoll';
 import { Fx } from '../render/fx';
@@ -22,7 +23,7 @@ import { CameraRig } from '../render/camera';
 import { LightPool } from '../render/lighting';
 import type { Renderer } from '../render/renderer';
 import { Emitter } from '../core/events';
-import { Rng } from '../core/math';
+import { Rng, hashString } from '../core/math';
 import { audio, type Sfx } from '../core/audio';
 import type { InputFrame } from '../core/input';
 
@@ -61,6 +62,7 @@ export class Game implements Host, AIWorld {
   private corpses: Corpse[] = []; private lures: Lure[] = [];
   private pickups: { id: string; x: number; item: ItemId; qty: number; mesh: THREE.Object3D }[] = [];
   interactables: Interactable[] = [];
+  private lootSpots = new Map<string, THREE.Object3D>();
   readonly player = new PlayerBrain();
   controlled = 0; hold = { on: false, x: 0 };
   looted = new Set<string>(); picked = new Set<string>(); killed = new Set<string>(); objectives = new Set<string>(); seenBeats = new Set<string>();
@@ -101,7 +103,10 @@ export class Game implements Host, AIWorld {
       this.add(a, v); this.infected.push(a); this.brains.set(a.id, new InfectedBrain());
     }
     // interactables
-    for (const c of level.caches) if (!this.looted.has(c.id)) this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise });
+    for (const c of level.caches) if (!this.looted.has(c.id)) {
+      this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise });
+      const m = lootSpot(hashString(c.id)); m.position.set(c.x, 0, -0.95); r.scene.add(m); this.lootSpots.set(c.id, m);
+    }
     this.interactables.push({ id: 'workbench', x: level.workbench.x, label: 'Use workbench', kind: 'workbench', time: 0 });
     if (!this.objectives.has(level.goal.objective)) this.interactables.push({ id: 'relay', x: level.goal.x, label: 'Restore the relay', kind: 'relay', time: 3 });
     for (const p of level.pickups) if (!this.picked.has(p.id)) { const m = pickupMesh(p.item); m.position.set(p.x, 0.0, 0.35); r.scene.add(m); this.pickups.push({ ...p, mesh: m }); }
@@ -117,14 +122,17 @@ export class Game implements Host, AIWorld {
   slot(a: Actor): number { let k = 0; for (const s of this.squad) { if (s === this.leader) continue; if (s === a) return k; if (s.alive) k++; } return k; }
   lightAt(x: number): number { return this.lights.lightAt(x); }
   medical(): number { return this.stash.count('medkit') + this.stash.count('bandage'); }
-  ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.stash.count(t) : 0; }
+  ammoFor(a: Actor): number { const t = WEAPONS[a.weapon].ammo; return t ? this.ammo(t) : 0; }
   weaponsFree(): boolean { return this.alert || this.time - this.lastShot < 6; }
   cry(z: Actor): void { this.sfx(z.type === 'runner' ? 'shriek' : z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'runner' ? 1 : 0.8); this.noise(z.x, z.type === 'runner' ? NOISE.shout : 7, z); }
   groan(z: Actor): void { this.sfx(z.type === 'brute' ? 'bruteRoar' : 'groan', z.x, z.type === 'brute' ? 0.7 : 0.55); }
 
   // ------------------------------------------------------------------ Host
-  ammo(t: ItemId): number { return this.stash.count(t); }
-  take(t: ItemId, n: number): number { const k = this.stash.take(t, n); this.ev.emit('stash', {}); return k; }
+  /** Story mode (default): reserve ammo never runs out and only attacks hurt; Survival keeps scarcity and needs. */
+  story = true;
+  private endless(t: ItemId): boolean { return this.story && t.startsWith('ammo_'); }
+  ammo(t: ItemId): number { return this.endless(t) ? 999 : this.stash.count(t); }
+  take(t: ItemId, n: number): number { if (this.endless(t)) return n; const k = this.stash.take(t, n); this.ev.emit('stash', {}); return k; }
   sfx(kind: Sfx | 'dryfire' | 'reload' | 'heal' | 'throw', ax: Actor | number, vol = 1): void {
     const x = typeof ax === 'number' ? ax : ax.x;
     audio.play(kind as Sfx, x, typeof ax === 'number' ? vol : ax === this.leader ? 1 : 0.6);
@@ -154,6 +162,7 @@ export class Game implements Host, AIWorld {
     const m = v.muzzle() ?? new THREE.Vector3(a.x + a.facing * 0.8, 1.35, 0.15);
     audio.play(w.sfx, a.x, a === this.leader ? 1 : 0.75);
     this.fx.muzzle(m, w.pellets > 1 ? 1.5 : 1.0); this.fx.casing(a.x + a.facing * 0.15, m.y, a.facing, w.pellets > 1);
+    this.fx.puff(m.x, m.y, m.z, { size: w.pellets > 1 ? 0.35 : 0.22, vx: a.facing * 0.4, vy: 0.35, life: 1.1, alpha: 0.28 });
     this.lights.transient.push({ x: m.x, y: m.y, z: m.z + 0.4, color: 0xffc070, intensity: 18, distance: 9, t: 0.06 });
     this.noise(a.x, w.noise, null);
     if (a === this.leader) { this.lastShot = this.time; this.cam.addTrauma(w.trauma); }
@@ -321,6 +330,7 @@ export class Game implements Host, AIWorld {
       return;
     }
     this.looted.add(u.id);
+    const spot = this.lootSpots.get(u.id); if (spot) { spot.getObjectByName('glint')?.removeFromParent(); this.lootSpots.delete(u.id); }   // emptied: box stays, glint goes
     const loot = { ...u.loot } as Loot;
     if (this.leader.survivor?.role === 'scavenger') { const b = this.rng.pick<ItemId>(['ammo_9mm', 'scrap', 'cloth', 'bandage', 'water']); loot[b] = (loot[b] ?? 0) + (b === 'ammo_9mm' ? 6 : 1); }
     const got: string[] = [], left: string[] = [];
@@ -386,6 +396,7 @@ export class Game implements Host, AIWorld {
   private stepNeeds(dt: number): void {
     for (const s of this.squad) {
       if (!s.alive) continue;
+      if (this.story) { s.bleed = 0; continue; }                     // story: health only drops when attacked
       s.hunger = Math.max(0, s.hunger - NEEDS.hungerRate * dt); s.thirst = Math.max(0, s.thirst - NEEDS.thirstRate * dt);
       let dps = 0;
       if (s.hunger === 0 || s.thirst === 0) dps += NEEDS.starveDps;
@@ -432,6 +443,11 @@ export class Game implements Host, AIWorld {
     const L = this.leader;
     this.cam.update(dt, L.x, L.facing, L.vx, this.r.halfWidth, this.x0, this.x1, this.time);
     this.r.focus.set(this.cam.x, 2.0, 0);
+    // camera moments per beat + trailing yaw while moving (2.5D parallax)
+    const k = 1 - Math.exp(-1.6 * dt), cm = this.beat?.cam;
+    this.r.zoom += ((cm?.zoom ?? 1) - this.r.zoom) * k;
+    this.r.lift += ((cm?.lift ?? 0) - this.r.lift) * k;
+    this.r.swing += (L.vx * 0.5 - this.r.swing) * (1 - Math.exp(-2.2 * dt));
     this.r.shakeOffset.set(this.cam.offset.x, this.cam.offset.y, this.cam.offset.roll);
     audio.listenerX = this.cam.x;
     this.lights.update(this.cam.x, this.time);
@@ -440,7 +456,8 @@ export class Game implements Host, AIWorld {
     this.fx.update(dt);
     for (const a of [...this.squad, ...this.infected]) if (a.alive) this.updateActorView(a, dt);
     this.corpses = this.corpses.filter((c) => {
-      c.view.poseFromBodies((p) => partPivot(c.rd, p), c.rd.facing);
+      c.view.root.visible = Math.abs(partPivot(c.rd, 'torso').x - this.cam.x) < this.r.halfWidth + 3;
+      if (c.view.root.visible) c.view.poseFromBodies((p) => partPivot(c.rd, p), c.rd.facing);
       if (c.age > 600) { c.view.setOpacity(Math.max(0, 1 - (c.age - 600) / 2)); if (c.age > 602) { destroyRagdoll(this.world, c.rd); this.r.scene.remove(c.view.root); c.view.dispose(); return false; } }
       return true;
     });
@@ -450,7 +467,17 @@ export class Game implements Host, AIWorld {
     if (this.built.beacon) (this.built.beacon as THREE.Mesh).visible = Math.sin(this.time * 3) > 0;
     this.built.blinkers.forEach((b, i) => { b.material.opacity = Math.sin(this.time * 2.2 + i * 1.7) > 0.2 ? 0.95 : 0.12; });
     this.wet.update(this.cam.x, this.time);
+    this.ambientFx(dt);
+    let i = 0; for (const m of this.lootSpots.values()) { const gl = m.getObjectByName('glint') as THREE.Sprite | undefined; if (gl) { const t = (this.time * 0.7 + i++ * 0.37) % 2.4; gl.material.opacity = t < 0.5 ? Math.sin((t / 0.5) * Math.PI) * 0.9 : 0; } }
     audio.setIntensity(this.intensity);
+  }
+
+  /** Ambient life near the camera: manhole steam, awning drips, splashes under running feet. */
+  private ambientFx(dt: number): void {
+    const cx = this.cam.x, hw = this.r.halfWidth + 2;
+    for (let x = Math.ceil((cx - hw) / 23) * 23; x < cx + hw; x += 23) if (Math.random() < dt * 3) this.fx.puff(x + 0.3, 0.05, 3.2, { size: 0.5, vx: -0.2, vy: 0.55, life: 2.6, grow: 0.5, alpha: 0.14, color: 0xb8c4cc });
+    if (this.rain.enabled) for (const b of this.level.buildings) if ((b.kind === 'store' || b.kind === 'pharmacy') && b.x < cx + hw && b.x + b.w > cx - hw && Math.random() < dt * 9) this.fx.drip(b.x + 0.6 + Math.random() * (b.w - 1.2), 3.2, FACADE_Z + 1.25);
+    for (const s of this.squad) if (s.alive && s.running && Math.random() < dt * 6) this.fx.splash(s.x, 0.1);
   }
 
   private updateActorView(a: Actor, dt: number): void {
@@ -462,11 +489,14 @@ export class Game implements Host, AIWorld {
       melee: a.meleeT >= 0 ? a.meleeT / MELEE_TIME : 0, reload: a.reloadT >= 0 ? a.reloadT / w.reload : 0, heal: a.healT >= 0 ? 1 : 0,
       hurt: a.hurtT, attack: a.attackT >= 0 ? a.attackT / a.infected!.windup : 0, throwT: a.throwT >= 0 ? a.throwT / 0.6 : 0,
       dormant: !sq && a.state === 'dormant', drawn: a.drawn || a.drawT > 0.3,
+      task: a === this.leader && this.using ? (this.using.kind === 'relay' ? 'interact' : 'search') : null,
     };
     targetPose(ai, this.tgt);
     blendPose(pose, this.tgt, !sq && a.state === 'waking' ? 3 : 18, dt);
     if (sq) v.setWeapon(a.meleeT >= 0 ? 'pipe' : w.mesh);
-    if (v instanceof SkinnedView) v.animate(ai, dt);
+    // off-screen actors are neither drawn nor animated (skinned meshes skip frustum culling)
+    v.root.visible = Math.abs(a.x - this.cam.x) < this.r.halfWidth + 3;
+    if (v instanceof SkinnedView && v.root.visible) v.animate(ai, dt);
     v.pose(pose, a.x, 0, a.facing, sq && !a.drawn && a.drawT < 0.3 && a.meleeT < 0);
     v.flash(a.hurtT * 0.6);
   }

@@ -52,6 +52,7 @@ export function settingsScreen(S: ScreenStack, s: Settings, input: Input, apply:
     h('select', { onchange: (e: Event) => { const v = (e.target as HTMLSelectElement).value; const hit = opts.find(([o]) => String(o) === v); if (hit) { s[k] = hit[0]; apply(s); } } }, ...opts.map(([v, l]) => h('option', { value: String(v), selected: s[k] === v }, l))));
   const tabs = h('div.tabs'), body = h('div.tabbody');
   const sections: [string, () => HTMLElement[]][] = [
+    ['Game', () => [select('Mode', 'mode', [['story', 'Story — unlimited reserve ammo, only attacks hurt'], ['survival', 'Survival — scarce ammo, hunger, thirst, bleeding']])]],
     ['Audio', () => [range('Master', 'master'), range('Music', 'music'), range('Effects', 'sfx'), range('Ambience', 'ambience'), range('Voice / radio', 'voice')]],
     ['Video', () => [select('Quality', 'quality', [['high', 'High'], ['medium', 'Medium'], ['low', 'Low']]), select('Pixel-art filter', 'pixel', [[-1, 'Auto (pixel art)'], [0, 'Off (HD)'], [2, '2 px'], [3, '3 px'], [4, '4 px']]),
       check('Auto-adjust quality on slow devices', 'autoQuality'), check('Rain', 'rain'), range('Screen shake', 'shake'), check('Squad name tags', 'nameTags'), check('Show FPS', 'showFps')]],

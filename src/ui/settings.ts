@@ -3,17 +3,20 @@ import { readPrefs, writePrefs } from '../core/storage';
 export interface Settings {
   master: number; music: number; sfx: number; ambience: number; voice: number;
   quality: 'high' | 'medium' | 'low'; pixel: number; shake: number; rain: boolean;
-  nameTags: boolean; touch: 'auto' | 'on' | 'off'; showFps: boolean; autoQuality: boolean;
+  nameTags: boolean; mode: 'story' | 'survival'; touch: 'auto' | 'on' | 'off'; showFps: boolean; autoQuality: boolean;
 }
+const phone = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
 export const DEFAULT_SETTINGS: Settings = {
   master: 0.85, music: 0.6, sfx: 0.9, ambience: 0.75, voice: 0.9,
-  quality: 'high', pixel: -1, shake: 1, rain: true, nameTags: false, touch: 'auto', showFps: false, autoQuality: true,
+  quality: phone ? 'medium' : 'high', pixel: -1, shake: 1, rain: true, nameTags: false, mode: 'story', touch: 'auto', showFps: false, autoQuality: true,
 };
 /** v2 (visual overhaul): pixel-art auto filter and clean screen (no name tags) become the defaults. */
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 export const loadSettings = (): Settings => {
   const s = readPrefs<Settings & { v?: number }>('settings', DEFAULT_SETTINGS);
-  if ((s.v ?? 1) < SETTINGS_VERSION) { s.pixel = DEFAULT_SETTINGS.pixel; s.nameTags = false; s.v = SETTINGS_VERSION; writePrefs('settings', s); }
+  if ((s.v ?? 1) < 2) { s.pixel = DEFAULT_SETTINGS.pixel; s.nameTags = false; }
+  if ((s.v ?? 1) < 3 && phone && s.quality === 'high') s.quality = 'medium';   // v3: lighter default on phones
+  if ((s.v ?? 1) < SETTINGS_VERSION) { s.v = SETTINGS_VERSION; writePrefs('settings', s); }
   return s;
 };
 export const saveSettings = (s: Settings) => writePrefs('settings', { ...s, v: SETTINGS_VERSION });

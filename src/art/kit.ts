@@ -80,7 +80,7 @@ export const M = {
   asphalt: () => std('asphalt', () => pbr(TX.asphalt(), { envMapIntensity: 1.4 })),
   paving: () => std('paving', () => pbr(TX.paving(), { envMapIntensity: 1.1 })),
   metal: (tint = '#5c6468') => std(`metal${tint}`, () => pbr(TX.rust(tint), { metalness: 0.55 })),
-  paint: (color: number, rough = 0.55) => std(`paint${color}${rough}`, () => { const t = TX.rust('#d8d8d8', color % 97); return new THREE.MeshStandardMaterial({ map: t.map, color, metalness: 0.25, roughness: rough, normalMap: t.normalMap }); }),
+  paint: (color: number, rough = 0.55) => std(`paint${color}${rough}`, () => { const t = TX.concrete('#c8c8c8', 9); return new THREE.MeshStandardMaterial({ map: t.map, color, metalness: 0.25, roughness: rough, normalMap: t.normalMap, normalScale: new THREE.Vector2(0.4, 0.4) }); }),   // weathered paint: soft grime, no rust camouflage
   wood: (tint = '#6e4c30') => std(`wood${tint}`, () => pbr(TX.wood(tint))),
   cloth: (color: number) => std(`cloth${color}`, () => pbr(TX.cloth(), { color, roughness: 0.95 })),
   rubber: () => std('rubber', () => new THREE.MeshStandardMaterial({ color: 0x151515, roughness: 0.9 })),

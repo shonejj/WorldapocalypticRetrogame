@@ -14,6 +14,16 @@
       "status": "approved"
     },
     {
+      "id": "models.props+weapons",
+      "kind": "static-models",
+      "source": "public/models/props/*.glb, public/models/weapons/*.glb",
+      "origin": "Poly Haven photo-scans (14 props) and Quaternius guns (pistol, rifle, shotgun), via github.com/andrewnakas/deadops-cleanroom (its assets/LICENSES.csv)",
+      "license": "CC0-1.0",
+      "licenseFile": "public/models/LICENSES-CC0.csv",
+      "notes": "Loaded by src/art/assets.ts; every use falls back to the code-built mesh if a file is missing.",
+      "status": "approved"
+    },
+    {
       "id": "tex.brick",
       "kind": "texture",
       "source": "src/art/textures.ts#brick",

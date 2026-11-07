@@ -32,7 +32,7 @@ export const CHAPTER1: LevelDef = {
   poles: [-14, 2, 18, 34, 50, 66, 82, 98, 114, 130, 146],
   fences: [[-4, 3], [36, 46], [67.5, 97], [107, 136], [148, 165]],
   trees: [41, 70, 112, 150],
-  vehicles: [{ x: 0.5, kind: 'van', z: -7.5 }, { x: 6, kind: 'sedan' }, { x: 21, kind: 'hatch', flip: true }, { x: 39, kind: 'van', z: -8, flip: true }, { x: 42, kind: 'van' }, { x: 52, kind: 'truck', flip: true }, { x: 72, kind: 'bus', z: -7 }, { x: 86, kind: 'sedan', flip: true }, { x: 104, kind: 'hatch', z: -7 }, { x: 126, kind: 'van', flip: true, z: -7.5 }],
+  vehicles: [{ x: 0.5, kind: 'van', z: -7.5 }, { x: 6, kind: 'sedan' }, { x: 21, kind: 'hatch', flip: true }, { x: 39, kind: 'van', z: -8, flip: true }, { x: 42, kind: 'van' }, { x: 63.5, kind: 'truck', flip: true }, { x: 72, kind: 'bus', z: -7 }, { x: 86, kind: 'sedan', flip: true }, { x: 104, kind: 'hatch', z: -7 }, { x: 126, kind: 'van', flip: true, z: -7.5 }],
   props: [
     { x: -2.5, kind: 'dumpster', z: -3.4 }, { x: -6, kind: 'trashbag', z: -3.7 }, { x: 4, kind: 'crate' }, { x: 4.8, kind: 'crate' },
     { x: 15, kind: 'barrel' }, { x: 15.6, kind: 'barrel' }, { x: 24, kind: 'cone', z: 1.0 }, { x: 31, kind: 'trashbag', z: -3.7 }, { x: 38, kind: 'barrier' },
@@ -76,10 +76,10 @@ export const CHAPTER1: LevelDef = {
     { id: 'alley', x0: -16, x1: 10, type: 'teach', intensity: 0.1, ink: 'intro', title: 'Behind the store' },
     { id: 'street', x0: 10, x1: 24, type: 'teach', intensity: 0.3, ink: 'first_infected' },
     { id: 'pharmacy', x0: 24, x1: 40, type: 'tension', intensity: 0.45, ink: 'pharmacy' },
-    { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'garage' },
-    { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass' },
+    { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'garage', cam: { zoom: 0.9 } },
+    { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass', cam: { zoom: 1.1, lift: -0.45 } },
     { id: 'breather', x0: 96, x1: 116, type: 'rest', intensity: 0.2, ink: 'breather' },
-    { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'relay_approach', title: WORLD_NAMES.relayName },
+    { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'relay_approach', title: WORLD_NAMES.relayName, cam: { zoom: 1.2, lift: 0.7 } },
   ],
   objectives: [
     { id: 'o_supplies', text: 'Scavenge supplies on Market Street' },

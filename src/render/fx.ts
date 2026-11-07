@@ -17,6 +17,8 @@ export class Fx {
   private flashes: { s: THREE.Sprite; t: number }[] = [];
   private tracers: THREE.LineSegments; private tr: { a: THREE.Vector3; b: THREE.Vector3; t: number }[] = [];
   private decals: THREE.Mesh[] = []; private decalI = 0;
+  /** soft puffs (gun smoke, manhole steam): pooled sprites that rise, grow and fade */
+  private puffs: { s: THREE.Sprite; t: number; max: number; vx: number; vy: number; grow: number; a: number }[] = []; private puffI = 0;
 
   constructor(scene: THREE.Scene) {
     scene.add(this.root);
@@ -31,6 +33,10 @@ export class Fx {
     tg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(64 * 6), 3));
     this.tracers = new THREE.LineSegments(tg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
     this.tracers.frustumCulled = false; this.root.add(this.tracers);
+    for (let i = 0; i < 48; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: 0x9aa6ae, transparent: true, depthWrite: false, opacity: 0 }));
+      sp.visible = false; this.root.add(sp); this.puffs.push({ s: sp, t: 0, max: 1, vx: 0, vy: 0, grow: 1, a: 0.3 });
+    }
     const dg = new THREE.CircleGeometry(1, 12); dg.rotateX(-Math.PI / 2);
     for (let i = 0; i < 48; i++) {
       const d = new THREE.Mesh(dg, new THREE.MeshStandardMaterial({ color: 0x3a0806, roughness: 0.15, transparent: true, opacity: 0.85, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
@@ -55,6 +61,13 @@ export class Fx {
   splash(x: number, z = 0): void { for (let i = 0; i < 4; i++) this.add({ x, y: 0.02, z, vx: (Math.random() - 0.5) * 1.5, vy: 1 + Math.random() * 1.5, vz: (Math.random() - 0.5) * 1.5, max: 0.25, size: 0.022, r: 0.6, g: 0.72, b: 0.82, grav: -16 }); }
   casing(x: number, y: number, dir: number, shell = false): void { this.add({ x, y, z: 0.1, vx: -dir * (1 + Math.random()), vy: 2.5 + Math.random(), vz: Math.random(), max: 2, size: shell ? 0.05 : 0.03, r: shell ? 0.8 : 0.9, g: shell ? 0.2 : 0.7, b: 0.15, stick: true }); }
   glass(x: number, y: number): void { for (let i = 0; i < 18; i++) this.add({ x, y, vx: (Math.random() - 0.5) * 4, vy: Math.random() * 3, vz: (Math.random() - 0.5) * 3, max: 1.2, size: 0.03, r: 0.5, g: 0.7, b: 0.55, stick: true }); }
+  puff(x: number, y: number, z: number, o: { size?: number; vx?: number; vy?: number; life?: number; grow?: number; alpha?: number; color?: number } = {}): void {
+    const p = this.puffs[this.puffI++ % this.puffs.length];
+    p.s.position.set(x, y, z); p.s.scale.setScalar(o.size ?? 0.3); p.s.visible = true; (p.s.material as THREE.SpriteMaterial).color.setHex(o.color ?? 0x9aa6ae);
+    Object.assign(p, { t: 0, max: o.life ?? 1.2, vx: o.vx ?? 0, vy: o.vy ?? 0.5, grow: o.grow ?? 1.2, a: o.alpha ?? 0.3 });
+  }
+  /** water dripping from an awning / ledge edge */
+  drip(x: number, y: number, z: number): void { this.add({ x, y, z, vy: -1, max: 1.4, size: 0.018, r: 0.55, g: 0.68, b: 0.78, grav: -12 }); }
   muzzle(p: THREE.Vector3, size = 0.9): void {
     const f = this.flashes.find((q) => q.t <= 0) ?? this.flashes[0];
     f.t = 0.06; f.s.visible = true; f.s.position.copy(p); f.s.scale.setScalar(size * (0.8 + Math.random() * 0.4));
@@ -75,6 +88,11 @@ export class Fx {
       this.inst.setMatrixAt(n, this.m); this.inst.setColorAt(n, this.c.setRGB(p.r * (0.3 + 0.7 * fade), p.g * (0.3 + 0.7 * fade), p.b * (0.3 + 0.7 * fade))); n++;
     }
     this.ps = keep; this.inst.count = n; this.inst.instanceMatrix.needsUpdate = true; if (this.inst.instanceColor) this.inst.instanceColor.needsUpdate = true;
+    for (const p of this.puffs) if (p.s.visible) {
+      p.t += dt; if (p.t >= p.max) { p.s.visible = false; continue; }
+      const k = p.t / p.max; p.s.position.x += p.vx * dt; p.s.position.y += p.vy * dt; p.s.scale.multiplyScalar(1 + p.grow * dt);
+      (p.s.material as THREE.SpriteMaterial).opacity = p.a * Math.sin(Math.min(1, k * 4) * Math.PI / 2) * (1 - k);
+    }
     for (const f of this.flashes) if (f.t > 0) { f.t -= dt; (f.s.material as THREE.SpriteMaterial).opacity = Math.max(0, f.t / 0.06); if (f.t <= 0) f.s.visible = false; }
     const pos = this.tracers.geometry.getAttribute('position') as THREE.BufferAttribute, col = this.tracers.geometry.getAttribute('color') as THREE.BufferAttribute;
     this.tr = this.tr.filter((t) => (t.t -= dt) > 0);

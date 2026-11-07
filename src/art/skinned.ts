@@ -120,8 +120,10 @@ export class SkinnedView {
   private shotT = 0; private lastRecoil = 0;
   private rag: { w0: Map<THREE.Bone, THREE.Quaternion>; a0: Map<Part, number>; hips0: THREE.Vector3; piv0: THREE.Vector2 } | null = null;
   ragdolled = false;
+  private phase: number;
 
   constructor(readonly look: Look, readonly scale = 1) {
+    this.phase = new Rng(look.seed * 7 + 3).next();
     this.model = cloneSkinned(SRC!.scene);
     this.model.traverse((o) => {
       const m = o as THREE.SkinnedMesh;
@@ -196,6 +198,7 @@ export class SkinnedView {
     if (cur === name) { if (prev) prev.timeScale = speed; return; }
     const a = this.mixer.clipAction(clip(name, part));
     a.reset(); a.timeScale = speed; a.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity); a.clampWhenFinished = once;
+    if (!once) a.time = this.phase * a.getClip().duration;          // nobody moves in lock-step
     a.play();
     if (prev && fade > 0) prev.crossFadeTo(a, fade, false); else if (prev) prev.stop();
     if (part === 'upper') { this.upperA = a; this.upperName = name; } else { this.lowerA = a; this.lowerName = name; }
@@ -215,18 +218,21 @@ export class SkinnedView {
     const moving = i.speed > 0.15, inf = i.gait !== 'survivor';
     const walkRate = (sp: number) => Math.max(0.35, sp / 1.45);
     // ---- lower body: locomotion
+    const L = this.look, tempo = L.tempo ?? 1, task = i.task === 'search' ? 'Fixing_Kneeling' : i.task === 'interact' ? 'Interact' : null;
     if (i.dormant) this.play('Death01', 'lower', 0.3, 1, true);
+    else if (task) this.play(task, 'lower', 0.25);
     else if (i.heal > 0) this.play('Fixing_Kneeling', 'lower');
     else if (i.crouch) this.play(moving ? 'Crouch_Fwd_Loop' : 'Crouch_Idle_Loop', 'lower', 0.2, moving ? Math.max(0.5, i.speed / 1.0) : 1);
-    else if (!moving) this.play('Idle_Loop', 'lower');
+    else if (!moving) this.play(i.drawn || inf ? 'Idle_Loop' : L.idle ?? 'Idle_Loop', 'lower', 0.35, inf ? 0.8 + this.phase * 0.4 : 1);
     else if (i.speed > 3.2) this.play('Sprint_Loop', 'lower', 0.2, i.speed / 5.6);
     else if (i.speed > 2.1) this.play('Jog_Fwd_Loop', 'lower', 0.2, i.speed / 3.4);
-    else this.play('Walk_Loop', 'lower', 0.25, walkRate(i.speed) * (inf && i.gait !== 'sprint' ? 0.85 : 1));
+    else this.play(!inf && L.walk && !i.drawn ? L.walk : 'Walk_Loop', 'lower', 0.25, walkRate(i.speed) * tempo * (inf && i.gait !== 'sprint' ? 0.8 + this.phase * 0.25 : 1));
     // ---- upper body: actions over locomotion
     const lowerName = this.lowerName;
     if (i.recoil > this.lastRecoil + 0.2) this.shotT = 0.18;
     this.lastRecoil = i.recoil; this.shotT -= dt;
     if (i.dormant) this.play('Death01', 'upper', 0.3, 1, true);
+    else if (task) this.play(task, 'upper', 0.25);
     else if (i.heal > 0) this.play('Fixing_Kneeling', 'upper');
     else if (inf && i.attack > 0) this.play(i.gait === 'brute' ? 'Sword_Attack' : 'Punch_Cross', 'upper', 0.12, i.gait === 'brute' ? 1.1 : 1.3, true);
     else if (i.hurt > 0.5) this.play('Hit_Chest', 'upper', 0.08, 1, true);

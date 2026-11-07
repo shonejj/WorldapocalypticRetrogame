@@ -81,7 +81,7 @@ export class Hud {
   refreshStash(): void {
     const g = this.g, L = g.leader, w = WEAPONS[L.weapon];
     this.wname.textContent = `${L.name.toUpperCase()} · ${w.name.toUpperCase()}`;
-    this.ammo.replaceChildren(`${L.mag}`, h('small', {}, ` / ${w.ammo ? g.stash.count(w.ammo) : '∞'}`));
+    this.ammo.replaceChildren(`${L.mag}`, h('small', {}, ` / ${w.ammo && !g.story ? g.stash.count(w.ammo) : '∞'}`));
     const show: ItemId[] = ['medkit', 'bandage', 'food', 'water', 'bottle', 'radio_part'];
     this.inv.replaceChildren(...show.filter((k) => g.stash.count(k) || k !== 'radio_part').map((k) => h('span', { title: ITEMS[k].name }, `${ITEMS[k].icon} `, h('b', {}, String(g.stash.count(k))))));
     this.weight.textContent = `PACK ${g.stash.weight.toFixed(1)} / ${g.stash.limit} kg`;

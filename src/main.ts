@@ -15,6 +15,7 @@ import { ScreenStack } from './ui/screens';
 import { Hud } from './ui/hud';
 import { TouchControls } from './ui/touch';
 import { loadCharacterAsset } from './art/skinned';
+import { loadAssets } from './art/assets';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
 import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, choiceScreen, endScreen, footText } from './ui/menus';
 import { h } from './ui/dom';
@@ -55,6 +56,8 @@ class App {
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.game && !this.screens.open) this.pause(); });
     addEventListener('pagehide', () => this.autosave());
     this.r.renderer.setAnimationLoop(() => this.frame());
+    // phones: the game is landscape-only; in portrait show a rotate screen with a fullscreen button
+    document.body.append(h('div#rotate', {}, h('div.phone'), h('p', {}, 'Turn your phone sideways to play'), h('button', { onclick: goLandscape }, 'Play fullscreen')));
     this.title();
     registerServiceWorker((ok) => { this.offline = ok; const f = document.getElementById('netfoot'); if (f) f.textContent = footText(ok); });
   }
@@ -63,7 +66,7 @@ class App {
     Object.assign(audio.volumes, { master: s.master, music: s.music, sfx: s.sfx, ambience: s.ambience, voice: s.voice, ui: s.sfx * 0.8 });
     audio.applyVolumes(); audio.setRain(s.rain);
     this.r.setQuality({ ...QUALITY_PRESETS[s.quality], pixel: s.pixel });
-    if (this.game) { this.game.rain.enabled = s.rain; this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; this.game.wet.setEnabled(QUALITY_PRESETS[s.quality].reflections); }
+    if (this.game) { this.game.story = s.mode !== 'survival'; this.game.rain.enabled = s.rain; this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; this.game.wet.setEnabled(QUALITY_PRESETS[s.quality].reflections); }
     if (this.hud) this.hud.tagsOn = s.nameTags;
     this.fps.classList.toggle('hidden', !s.showFps);
     this.updateTouch();
@@ -88,9 +91,10 @@ class App {
 
   start(save: SaveData | null): void {
     audio.unlock();
+    goLandscape();
     this.screens.clear(); this.teardown();
     const loading = h('div.loading', {}, h('div', {}, 'TUNING IN…'), h('div.bar', {}, h('i'))); document.body.append(loading);
-    loadCharacterAsset(`${import.meta.env.BASE_URL}models/survivor.glb`).catch((e) => console.warn('[characters] falling back to built-in rig', e))
+    Promise.all([loadCharacterAsset(`${import.meta.env.BASE_URL}models/survivor.glb`).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
       .then(() => setTimeout(() => {
       try {
         const g = (this.game = new Game(this.r, CHAPTER1, save, QUALITY_PRESETS[this.settings.quality].shadows));
@@ -211,3 +215,11 @@ class App {
 }
 
 new App();
+
+/** Fullscreen + landscape lock where the browser allows it (Android Chrome); a no-op elsewhere. Needs a user gesture. */
+function goLandscape(): void {
+  if (!matchMedia('(pointer: coarse)').matches || document.fullscreenElement) return;
+  document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })
+    .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> }).lock?.('landscape'))
+    .catch(() => { /* iOS / desktop: no fullscreen API — the rotate screen still guides the player */ });
+}

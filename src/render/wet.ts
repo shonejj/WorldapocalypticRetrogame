@@ -33,7 +33,11 @@ export function wetMaterial(base: THREE.MeshStandardMaterial, amount: number): T
         vec2 rp = vWetPos.xz * 5.0;
         vec2 rip = (vec2(wn(rp + uTime * 3.1), wn(rp * 1.3 - uTime * 2.7 + 17.0)) - 0.5) * 0.014;
         vec4 rc = uReflMat * vec4(vWetPos, 1.0);
-        vec3 refl = texture2D(uRefl, rc.xy / rc.w + rip).rgb;
+        vec2 ruv = rc.xy / rc.w + rip;
+        // fade out where the mirror image has no data (behind / outside the reflection camera),
+        // and cap HDR so a lamp in a puddle can't bloom into a flare
+        float edge = rc.w > 0.0 ? smoothstep(0.0, 0.08, ruv.x) * smoothstep(1.0, 0.92, ruv.x) * smoothstep(0.0, 0.1, ruv.y) * smoothstep(1.0, 0.9, ruv.y) : 0.0;
+        vec3 refl = min(texture2D(uRefl, clamp(ruv, 0.001, 0.999)).rgb, vec3(0.6)) * edge * 0.85;
         vec3 V = normalize(cameraPosition - vWetPos);
         float fr = 0.35 + 0.65 * pow(1.0 - max(V.y, 0.0), 3.0);
         outgoingLight = mix(outgoingLight, outgoingLight * 0.45 + refl * fr, wetP * uOn);
@@ -50,8 +54,8 @@ export class WetReflections {
   enabled = false;
 
   constructor(private scene: THREE.Scene, y = -0.14) {
-    const s = Math.min(devicePixelRatio || 1, 1.5) * 0.5;
-    this.reflector = new Reflector(new THREE.PlaneGeometry(400, 80), { textureWidth: Math.round(innerWidth * s), textureHeight: Math.round(innerHeight * s), clipBias: 0.01, multisample: 0 });
+    // the scene renders at ≈360 rows in pixel-art mode; a 480×270 mirror is plenty and cheap on phones
+    this.reflector = new Reflector(new THREE.PlaneGeometry(400, 80), { textureWidth: 480, textureHeight: 270, clipBias: 0.01, multisample: 0 });
     this.reflector.rotation.x = -Math.PI / 2; this.reflector.position.y = y;
     // draw nothing ourselves; we only need its onBeforeRender pass, before the ground draws
     const texMat = (this.reflector.material as THREE.ShaderMaterial).uniforms.textureMatrix.value as THREE.Matrix4;
@@ -63,6 +67,7 @@ export class WetReflections {
       if (sc.overrideMaterial) return;                         // skip the pixel pass's normal render
       const hidden: THREE.Object3D[] = [];
       for (const o of NO_REFLECT) if (o.visible) { o.visible = false; hidden.push(o); }   // no halos/rain mirrored as floating flares
+      WET.uRefl.value = blank;                                   // never sample the target we are drawing into (feedback loop)
       orig(r, sc, cam, geo, mat, grp);
       for (const o of hidden) o.visible = true;
       const tm = (this.reflector as unknown as { getRenderTarget(): THREE.WebGLRenderTarget }).getRenderTarget();

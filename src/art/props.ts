@@ -1,13 +1,23 @@
 import * as THREE from 'three';
 import { Rng } from '../core/math';
-import { Batch, M, box, cyl, plane } from './kit';
+import { Batch, M, box, cyl, glowSprite, plane } from './kit';
+import { asset, type AssetName } from './assets';
 
 /** Prop family. Each returns a mesh group with its origin at the base centre, plus a
  *  collision proxy (half extents) for the physics world. */
 export type PropKind = 'barrel' | 'crate' | 'barrier' | 'dumpster' | 'cone' | 'tires' | 'trashbag' | 'bottle';
 export interface Prop { group: THREE.Group; half: [number, number]; dynamic: boolean; material: 'metal' | 'wood' | 'concrete' | 'plastic' | 'glass' }
 
+/** Real CC0 scans replace the code-built look when loaded; physics keeps the same box. */
+const SCAN: Partial<Record<PropKind, AssetName>> = { barrel: 'barrel', crate: 'wooden_crate', barrier: 'road_barrier', tires: 'tyre', trashbag: 'trashbag' };
 export function prop(kind: PropKind, seed = 1): Prop {
+  const p = builtProp(kind, seed), scan = SCAN[kind];
+  const m = scan && asset(scan, p.half[1] * 2);
+  if (m) { if (kind === 'tires') { p.group.clear(); for (let i = 0; i < 3; i++) { const t = asset('tyre', 0.24)!; t.position.set((i % 2) * 0.04, i * 0.24, 0); t.rotation.y = seed * 1.7 + i; p.group.add(t); } }
+    else { p.group.clear(); m.rotation.y = kind === 'barrier' ? Math.PI / 2 : (seed % 7) * 0.4; p.group.add(m); } }
+  return p;
+}
+function builtProp(kind: PropKind, seed = 1): Prop {
   const B = new Batch(), R = new Rng(seed);
   switch (kind) {
     case 'barrel': {
@@ -76,3 +86,26 @@ export function pickupMesh(kind: string): THREE.Group {
 }
 
 export { plane };
+
+/** A searchable spot (scavenging): an opened box / duffel bag with a slow glint so players read
+ *  "there is something here" without UI. The glint is a sprite named 'glint' (animated by Game). */
+export function lootSpot(seed: number): THREE.Group {
+  const R = new Rng(seed), B = new Batch(), g = new THREE.Group();
+  const scan = asset(R.pick<AssetName>(['cardboard_box', 'plastic_crate', 'military_crate', 'cardboard_box']));
+  if (scan) {
+    scan.rotation.y = R.range(-0.4, 0.4); g.add(scan);
+    const extra = R.chance(0.5) && asset('jerrycan'); if (extra) { extra.position.set(0.45, 0, 0.1); extra.rotation.y = 0.6; g.add(extra); }
+  } else if (R.chance(0.5)) {               // opened cardboard box with loose items
+    const card = M.paint(0x8a6a44, 0.9);
+    B.add(card, box(0.5, 0.32, 0.38, 0, 0.16, 0), box(0.5, 0.02, 0.2, 0, 0.36, 0.26, { rotX: 0.9 }), box(0.5, 0.02, 0.2, 0, 0.36, -0.26, { rotX: -0.9 }));
+    B.add(M.paint(0x9aa0a0, 0.35), cyl(0.05, 0.05, 0.1, -0.12, 0.37, 0.02, 10));
+    B.add(M.paint(0x3a6a8a, 0.4), cyl(0.04, 0.04, 0.2, 0.1, 0.4, -0.05, 10));
+  } else {                           // dropped duffel bag, unzipped
+    B.add(M.cloth(0x3a4a3a), cyl(0.16, 0.16, 0.62, 0, 0.16, 0, 12, { rotZ: Math.PI / 2 }));
+    B.add(M.cloth(0x1d221d), box(0.5, 0.02, 0.06, 0, 0.32, 0.03));
+    B.add(M.paint(0xb03028, 0.5), box(0.14, 0.08, 0.1, 0.12, 0.34, 0.02));
+  }
+  g.add(B.build());
+  const glint = glowSprite(0.45, 0xfff0c8, 0.0); glint.name = 'glint'; glint.position.set(0, 0.55, 0.15); g.add(glint);
+  return g;
+}
