@@ -78,6 +78,8 @@ export class Game implements Host, AIWorld {
     this.built = buildWorld(level, r.scene, this.world);
     this.lights.set(this.built.lights);
     this.fx = new Fx(r.scene); this.rain = new Rain(r.scene);
+    // no rain under shop awnings (they stretch ~1.3 m out from the facade, ~3.6 m up)
+    this.rain.cover = level.buildings.filter((b) => b.kind === 'store' || b.kind === 'pharmacy').map((b) => ({ x0: b.x + 0.3, x1: b.x + b.w - 0.3, z0: FACADE_Z, z1: FACADE_Z + 1.35, y: 3.6 }));
     this.wet = new WetReflections(r.scene);
     this.checkpointX = save?.checkpoint ?? level.spawnX;
     this.stash = new Stash(save?.stash ?? { ammo_rifle: 36, ammo_9mm: 24, ammo_shells: 8, bandage: 1, food: 1, water: 1, bottle: 1 });
@@ -142,13 +144,14 @@ export class Game implements Host, AIWorld {
     if (a.team === 'squad') {
       if (Math.abs(a.x - this.leader.x) < 9) audio.play(this.rain.enabled ? 'stepWet' : 'step', a.x, a.running ? 0.9 : a.crouching ? 0.25 : 0.5);
       if (this.rain.enabled && Math.random() < 0.6) this.fx.splash(a.x + a.facing * 0.1, 0.05);
-      this.noise(a.x, a.crouching ? NOISE.crouch : a.running ? NOISE.run : NOISE.walk, null);
+      this.noise(a.x, a.crouching ? NOISE.crouch : a.running ? NOISE.run : NOISE.walk, null, a === this.leader);   // only your own steps are drawn
     } else if (a.type === 'brute') { audio.play('hitConcrete', a.x, 0.8); this.cam.addTrauma(Math.max(0, 0.12 - Math.abs(a.x - this.leader.x) * 0.01)); }
   }
 
   /** Noise stimulus: infected within radius × hearing investigate (stealth through sound). */
-  noise(x: number, radius: number, src: Actor | null): void {
+  noise(x: number, radius: number, src: Actor | null, show = true): void {
     if (radius <= 0) return;
+    if (show && Math.abs(x - this.cam.x) < this.r.halfWidth + radius) this.fx.noiseRing(x, radius, radius >= 15);
     for (const z of this.infected) {
       if (!z.alive || z === src) continue;
       const d = Math.abs(z.x - x), rr = radius * z.infected!.hearing;
@@ -512,6 +515,9 @@ export class Game implements Host, AIWorld {
 
   dispose(): void {
     this.wet.dispose();
+    // free this level's GPU geometry (merged batches, clones) so retries do not grow memory;
+    // shared materials/textures stay cached and simply re-upload if used again
+    this.r.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && !(m.geometry as { userData?: { keep?: boolean } }).userData?.keep) m.geometry.dispose(); });
     this.r.scene.clear();
     this.ev.clear();
   }

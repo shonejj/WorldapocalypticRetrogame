@@ -4,6 +4,7 @@ import { ITEMS, WEAPONS, type ItemId } from '../game/data';
 import type { Game } from '../game/game';
 import type { Action, Input } from '../core/input';
 import { audio } from '../core/audio';
+import { readPrefs, writePrefs } from '../core/storage';
 
 /**
  * HUD (game-ui-ux): anchored to corners with safe-area insets; driven by game EVENTS
@@ -42,7 +43,7 @@ export class Hud {
     for (let i = 0; i < 20; i++) { const b = h('span.blip.hidden'); this.blips.push(b); this.signal.append(b); }
     this.prompt.append(this.promptKey, this.promptText, h('div.pbar', {}, this.promptBar));
     const buttons = h('div.topbtns', {}, h('button.icon', { onclick: onInventory, 'aria-label': 'Inventory and crafting' }, '▤'), h('button.icon', { onclick: onPause, 'aria-label': 'Pause' }, 'Ⅱ'));
-    this.root.append(h('div.tags', {}, ...this.tags), squad, obj, stealth, weapon, this.signal, this.prompt, this.sub, this.toasts, this.beatTitle, buttons);
+    this.root.append(this.hintEl, h('div.tags', {}, ...this.tags), squad, obj, stealth, weapon, this.signal, this.prompt, this.sub, this.toasts, this.beatTitle, buttons);
     document.body.append(this.hurt, this.root);
     // event subscriptions
     g.ev.on('toast', (e) => this.toast(e.text, e.kind));
@@ -56,6 +57,34 @@ export class Hud {
     g.ev.on('beat', (e) => { if (e.beat.title) { this.beatTitle.textContent = e.beat.title.toUpperCase(); animate(this.beatTitle, { opacity: [0, 1, 1, 0], letterSpacing: ['0.6em', '0.35em'], duration: 3200, ease: 'outQuad' }); } });
     for (const id of g.objectives) this.objList.querySelector(`[data-id="${id}"]`)?.classList.add('done');
     this.refreshStash();
+  }
+
+  /**
+   * First-use hints (production bible gap #27): each verb is taught once, at the moment it matters,
+   * with the key/button of the device in use. Shown ids persist so returning players are not nagged.
+   */
+  private hintEl = h('div.hint.hidden'); private hintUntil = 0;
+  private shown = new Set<string>(readPrefs<{ ids: string[] }>('hints', { ids: [] }).ids);
+  private hint(id: string, text: string): void {
+    if (this.shown.has(id) || performance.now() < this.hintUntil) return;
+    this.shown.add(id); writePrefs('hints', { ids: [...this.shown] });
+    this.hintEl.textContent = text; this.hintEl.classList.remove('hidden'); this.hintUntil = performance.now() + 6000;
+    animate(this.hintEl, { opacity: [0, 1], duration: 300, ease: 'outQuad' });   // opacity only: a transform would override the centring
+  }
+  private hints(): void {
+    const g = this.g, L = g.leader, t = this.input.device === 'touch', k = (a: Parameters<Input['label']>[0]) => this.input.label(a);
+    if (performance.now() > this.hintUntil) this.hintEl.classList.add('hidden');
+    if (document.querySelector('.screen')) return;                // never behind the intro, menus or dialogue choices
+    this.hint('move', t ? 'Drag the left stick to walk — push it to the edge to run.' : `${k('left')}/${k('right')} to walk, hold ${k('run')} to run. The mouse sets where you face.`);
+    if (g.time < 4) return;
+    const near = g.infected.filter((z) => z.alive && Math.abs(z.x - L.x) < 10);
+    const unaware = near.find((z) => z.state !== 'chase' && z.state !== 'dormant' && Math.sign(z.x - L.x) === z.facing && Math.abs(z.x - L.x) < 2.2);
+    if (near.some((z) => z.state !== 'dormant') && !L.crouching) this.hint('sneak', t ? 'Tap SNEAK (or flick the stick down) to move silently. Stay out of the light.' : `Press ${k('crouch')} to sneak. Rings on the ground show how far your noise carries.`);
+    if (unaware) this.hint('takedown', t ? 'Behind it and unseen: tap HIT for a silent takedown.' : `Behind it and unseen: press ${k('melee')} for a silent takedown.`);
+    if (near.some((z) => z.state === 'dormant')) this.hint('lure', t ? 'Sleepers wake to noise. Tap LURE to throw a bottle and pull them away.' : `Sleepers wake to noise. Press ${k('throw')} to throw a bottle where you aim.`);
+    if (g.focus?.kind === 'cache') this.hint('search', t ? 'Something to search here — tap USE and keep still until it is done.' : `Press ${k('interact')} to search. Moving cancels it.`);
+    if (g.focus?.kind === 'workbench') this.hint('bench', 'Miller can craft the relay fuse here: scrap, a battery and tape.');
+    if (g.alert) this.hint('fight', t ? 'They have seen you. Hold FIRE — gunfire is loud and draws the whole street.' : `They have seen you. ${k('fire')} to shoot — gunfire draws the whole street.`);
   }
 
   toast(text: string, kind: 'loot' | 'info' | 'warn' = 'info'): void {
@@ -90,6 +119,7 @@ export class Hud {
 
   /** Per-frame pass for continuously changing values. */
   update(): void {
+    this.hints();
     const g = this.g, L = g.leader;
     g.squad.forEach((s, i) => {
       const m = this.members[i];
@@ -106,7 +136,9 @@ export class Hud {
     if (L.mag !== Number(this.ammo.firstChild?.textContent)) this.refreshStash();
     const det = g.detection();
     this.eyeBar.style.width = `${det * 100}%`;
-    this.eyeLbl.textContent = det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && g.lightAt(L.x) < 0.3 ? 'HIDDEN' : 'UNSEEN';
+    const lit = g.lightAt(L.x) >= 0.3;                       // binary light rule: you are either lit or in shadow
+    this.eyeLbl.textContent = (det >= 1 ? 'SPOTTED' : det > 0.45 ? 'SUSPICIOUS' : L.crouching && !lit ? 'HIDDEN' : 'UNSEEN') + (lit ? ' · IN LIGHT' : ' · IN SHADOW');
+    this.eyeLbl.classList.toggle('lit', lit);
     if (g.focus && !g.ended) {
       this.prompt.classList.remove('hidden');
       this.promptKey.textContent = this.input.label('interact');

@@ -17,7 +17,7 @@ import { TouchControls } from './ui/touch';
 import { loadCharacterAsset } from './art/skinned';
 import { loadAssets } from './art/assets';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
-import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, choiceScreen, endScreen, footText } from './ui/menus';
+import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, choiceScreen, endScreen, introScreen, footText } from './ui/menus';
 import { h } from './ui/dom';
 import { registerServiceWorker } from './sw-register';
 
@@ -94,7 +94,7 @@ class App {
     goLandscape();
     this.screens.clear(); this.teardown();
     const loading = h('div.loading', {}, h('div', {}, 'TUNING IN…'), h('div.bar', {}, h('i'))); document.body.append(loading);
-    Promise.all([loadCharacterAsset(`${import.meta.env.BASE_URL}models/survivor.glb`).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
+    Promise.all([loadCharacterAsset(import.meta.env.BASE_URL).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
       .then(() => setTimeout(() => {
       try {
         const g = (this.game = new Game(this.r, CHAPTER1, save, QUALITY_PRESETS[this.settings.quality].shadows));
@@ -110,6 +110,7 @@ class App {
         this.r.renderer.compile(this.r.scene, this.r.camera);          // warm shaders before play
       } finally { loading.remove(); }
       this.perf = { t: 0, n: 0, done: false };
+      if (!save) introScreen(this.screens, CHAPTER1.name, () => this.updateTouch());     // new game: the broadcast first
       this.updateTouch();
     }, 30));
   }
@@ -166,7 +167,7 @@ class App {
     const g = this.game!; this.knot = ''; deleteSave('autosave');
     const alive = g.squad.filter((s) => s.alive).length;
     endScreen(this.screens, `${GAME.title.toUpperCase()}`, `${g.level.name.toUpperCase()} — COMPLETE`,
-      `Survivors: ${alive}/4 · Caches searched: ${g.looted.size} · Infected put down: ${g.killed.size}. The voice gave coordinates north-east: a research facility. Chapter 2 continues the journey.`,
+      `Survivors: ${alive}/4 · Caches searched: ${g.looted.size}/${g.level.caches.length} · Infected put down: ${g.killed.size} · Time: ${Math.floor(g.time / 60)}:${String(Math.floor(g.time % 60)).padStart(2, '0')}. The voice gave coordinates north-east: a research facility. Chapter 2 continues the journey.`,
       [['Back to title', () => this.quit()]]);
     this.updateTouch();
   }

@@ -19,6 +19,8 @@ export interface Look {
   infected?: boolean; seed: number;
   /** personality in motion (skinned bodies): idle / walk clip and walk tempo */
   idle?: string; walk?: string; tempo?: number;
+  /** body template for skinned characters */
+  sex?: 'm' | 'f';
 }
 
 const capsule = (r: number, len: number, mat: THREE.Material, y: number, sx = 1, sz = 1) => {
@@ -39,14 +41,16 @@ export function rimify(mat: THREE.Material): void {
   const m = mat as THREE.MeshStandardMaterial;
   if (rimmed.has(m) || !m.isMeshStandardMaterial) return;
   rimmed.add(m);
-  m.onBeforeCompile = (sh) => {
+  const prev = m.onBeforeCompile.bind(m), prevKey = m.customProgramCacheKey.bind(m);   // compose with an existing patch (recolour)
+  m.onBeforeCompile = (sh, r) => {
+    prev(sh, r);
     Object.assign(sh.uniforms, RIM);
     sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nuniform vec3 uRimColor; uniform float uRimPow; uniform float uFill;')
       .replace('#include <opaque_fragment>', `{ float rimF = pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), uRimPow);
         outgoingLight += uRimColor * rimF * 0.55 + diffuseColor.rgb * uFill; }
       #include <opaque_fragment>`);
   };
-  m.customProgramCacheKey = () => 'rim';
+  m.customProgramCacheKey = () => 'rim' + prevKey();
 }
 
 const skinMats = new Map<string, THREE.MeshStandardMaterial>();
@@ -234,9 +238,9 @@ function hipFrom(p: Pose): number {
 // ---------------------------------------------------------------- the cast
 export const LOOKS = {
   reed: { seed: 11, idle: 'Idle_Loop', skin: 0xc08a68, hair: 0x1e1612, hairStyle: 'messy', beard: true, top: 0x444a36, topStyle: 'jacket', shirt: 0x5a5f62, pants: 0x4a5058, boots: 0x4a3322, gloves: 0x2a2a28, backpack: 0x5e4c32 },
-  maya: { seed: 23, idle: 'Idle_Talking_Loop', tempo: 1.05, skin: 0xa8725a, hair: 0x241812, hairStyle: 'ponytail', top: 0x8e2e28, topStyle: 'jacket', shirt: 0xb8b0a0, pants: 0x585a5c, boots: 0x3a2a1e, backpack: 0x7a2e2a, mask: 0xc9d6d8 },
+  maya: { seed: 23, sex: 'f', idle: 'Idle_Talking_Loop', tempo: 1.05, skin: 0xa8725a, hair: 0x241812, hairStyle: 'ponytail', top: 0x8e2e28, topStyle: 'jacket', shirt: 0xb8b0a0, pants: 0x585a5c, boots: 0x3a2a1e, backpack: 0x7a2e2a, mask: 0xc9d6d8 },
   miller: { seed: 37, walk: 'Walk_Formal_Loop', tempo: 0.88, skin: 0xd29a7a, hair: 0xd6d2c8, hairStyle: 'buzz', beard: true, headwear: 'cap', top: 0x8c7c52, topStyle: 'coat', shirt: 0x4a5058, pants: 0x5a5644, boots: 0x3a2a1a, gloves: 0x5a4a32, backpack: 0x4a4a3a, build: 1.12 },
-  iris: { seed: 41, idle: 'Idle_Torch_Loop', skin: 0xc89a7a, hair: 0x121214, hairStyle: 'long', headwear: 'headphones', top: 0x5a4878, topStyle: 'hoodie', shirt: 0x8a8a7a, pants: 0x8a7a5c, boots: 0x2a2622, backpack: 0x3d4a3a, scarf: 0x2f4a52, build: 0.92 },
+  iris: { seed: 41, sex: 'f', idle: 'Idle_Torch_Loop', skin: 0xc89a7a, hair: 0x121214, hairStyle: 'long', headwear: 'headphones', top: 0x5a4878, topStyle: 'hoodie', shirt: 0x8a8a7a, pants: 0x8a7a5c, boots: 0x2a2622, backpack: 0x3d4a3a, scarf: 0x2f4a52, build: 0.92 },
 } satisfies Record<string, Look>;
 
 const INFECTED_SKIN = [0xa8908a, 0x9c8682, 0xb39a90, 0x8f8480, 0x9a948a];   // bloodless grey-pink (reference)

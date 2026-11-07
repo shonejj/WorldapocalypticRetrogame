@@ -4,13 +4,13 @@
   "policy": "World art and audio are authored in code (MIT). Third-party assets are allowed only with a permissive licence (CC0/MIT), bundled locally for offline play, and listed here with source and licence.",
   "assets": [
     {
-      "id": "model.human",
-      "kind": "skinned-model",
-      "source": "public/models/survivor.glb",
-      "origin": "Quaternius \u2014 Universal Animation Library (Standard), via github.com/J-Ponzo/gltf-universal-animation-library",
+      "id": "chars.quaternius",
+      "kind": "skinned-models",
+      "source": "public/models/chars/*.glb",
+      "origin": "Quaternius \u2014 Modular Character Outfits (peasant m/f), Universal Base Characters (face, eyes, eyebrows), hairstyles, Universal Animation Library 1 (26 clips), via github.com/kirbycope/godot-3d-player-controller-v2",
       "license": "CC0-1.0",
-      "licenseFile": "public/models/LICENSE-Quaternius-UAL-CC0.txt",
-      "notes": "Mannequin + 21 of its clips (prune/dedup/resample/quantize with glTF-Transform). Dressed per character in src/art/skinned.ts.",
+      "licenseFile": "public/models/chars/LICENSE-*.txt",
+      "notes": "Assembled per survivor in src/art/skinned.ts (outfit + face cut from the base body + hair on Head); textures downsized to 512 px; plain float vertices.",
       "status": "approved"
     },
     {
