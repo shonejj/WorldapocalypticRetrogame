@@ -1,161 +1,95 @@
-import { animate, createTimer, stagger } from 'animejs';
+import { animate, stagger } from 'animejs';
 import { h } from './dom';
-import { GAME } from '../config/game';
-import { ITEMS, SURVIVORS, WEAPONS, type ItemId } from '../game/data';
-import type { Settings } from '../core/storage';
-import type { Game } from '../game/game';
+import { audio } from '../core/audio';
 
-type Btn = [label: string, fn: () => void, disabled?: boolean];
+/**
+ * Screen stack (game-ui-ux pattern 5): push overlays, pop to go back; only the top screen
+ * receives input. Every screen focuses a control on open and supports keyboard/gamepad
+ * focus navigation (up/down/left/right, confirm, back).
+ */
+export interface Screen { el: HTMLElement; onBack?: () => void; onClose?: () => void; modal?: boolean }
 
-export const footText = (offline: boolean) => `v${GAME.version} · ${offline ? 'OFFLINE READY — PLAYABLE WITHOUT INTERNET' : 'CACHING FOR OFFLINE…'} · MIT`;
+export class ScreenStack {
+  private stack: Screen[] = [];
+  /** Called after any screen closes (main flushes buffered input so Esc/B don't leak into gameplay). */
+  onPop: (() => void) | null = null;
+  readonly layer = h('div.screens');
+  constructor() { document.body.append(this.layer); addEventListener('keydown', (e) => this.key(e)); }
 
-function menu(items: Btn[]): HTMLElement {
+  get top(): Screen | undefined { return this.stack[this.stack.length - 1]; }
+  get open(): boolean { return this.stack.length > 0; }
+  get blocking(): boolean { return this.stack.some((s) => s.modal !== false); }
+
+  push(s: Screen): void {
+    if (this.top) this.top.el.classList.add('under');
+    this.stack.push(s); this.layer.append(s.el);
+    animate(s.el, { opacity: [0, 1], duration: 220, ease: 'outQuad' });
+    const items = s.el.querySelectorAll('.menu > button, .focusable');
+    if (items.length) animate(items, { opacity: [0, 1], y: [8, 0], delay: stagger(40, { start: 80 }), duration: 260, ease: 'outQuad' });
+    this.focusFirst();
+  }
+  pop(): void {
+    const s = this.stack.pop(); if (!s) return;
+    s.onClose?.(); s.el.remove(); this.onPop?.();
+    if (this.top) { this.top.el.classList.remove('under'); this.focusFirst(); }
+  }
+  replace(s: Screen): void { const old = this.stack.pop(); old?.onClose?.(); old?.el.remove(); this.push(s); }
+  clear(): void { while (this.stack.length) this.pop(); }
+
+  focusFirst(): void {
+    const t = this.top; if (!t) return;
+    const el = t.el.querySelector<HTMLElement>('[autofocus], .menu > button:not([disabled]), button:not([disabled]), input, select');
+    el?.focus({ preventScroll: true });
+  }
+  private focusables(): HTMLElement[] {
+    return this.top ? [...this.top.el.querySelectorAll<HTMLElement>('button:not([disabled]), input, select')].filter((e) => e.offsetParent !== null) : [];
+  }
+  /** Move focus spatially; dir: up/down/left/right. */
+  move(dir: 'up' | 'down' | 'left' | 'right'): void {
+    const list = this.focusables(); if (!list.length) return;
+    const cur = document.activeElement as HTMLElement;
+    if (!list.includes(cur)) { list[0].focus(); return; }
+    if ((dir === 'left' || dir === 'right') && cur.tagName === 'INPUT' && (cur as HTMLInputElement).type === 'range') {
+      const r = cur as HTMLInputElement; r.value = String(Number(r.value) + Number(r.step || 0.05) * (dir === 'right' ? 1 : -1)); r.dispatchEvent(new Event('input')); return;
+    }
+    const a = cur.getBoundingClientRect(), ax = a.x + a.width / 2, ay = a.y + a.height / 2;
+    let best: HTMLElement | null = null, bd = 1e9;
+    for (const e of list) {
+      if (e === cur) continue;
+      const b = e.getBoundingClientRect(), bx = b.x + b.width / 2, by = b.y + b.height / 2, dx = bx - ax, dy = by - ay;
+      const ok = dir === 'up' ? dy < -4 : dir === 'down' ? dy > 4 : dir === 'left' ? dx < -4 : dx > 4;
+      if (!ok) continue;
+      const d = dir === 'up' || dir === 'down' ? Math.abs(dy) + Math.abs(dx) * 2 : Math.abs(dx) + Math.abs(dy) * 2;
+      if (d < bd) { bd = d; best = e; }
+    }
+    if (!best && (dir === 'down' || dir === 'up')) best = list[(list.indexOf(cur) + (dir === 'down' ? 1 : list.length - 1)) % list.length];
+    if (best) { best.focus({ preventScroll: false }); audio.play('uiMove'); }
+  }
+  confirm(): void { const e = document.activeElement as HTMLElement | null; if (e && this.top?.el.contains(e)) { e.click(); } }
+  back(): void { const t = this.top; if (!t) return; audio.play('uiBack'); if (t.onBack) t.onBack(); else this.pop(); }
+  private key(e: KeyboardEvent): void {
+    if (!this.top || (document.activeElement as HTMLElement)?.dataset.capturing) return;
+    const map: Record<string, () => void> = { ArrowUp: () => this.move('up'), ArrowDown: () => this.move('down'), ArrowLeft: () => this.move('left'), ArrowRight: () => this.move('right'), Escape: () => this.back() };
+    const f = map[e.code]; if (f) { e.preventDefault(); e.stopPropagation(); f(); }
+  }
+  /** Gamepad menu navigation (called each frame by main while a screen is open). */
+  private padPrev: boolean[] = []; private padRepeat = 0;
+  pollPad(now: number): void {
+    const p = Array.from(navigator.getGamepads?.() ?? []).find((g) => g && g.connected); if (!p || !this.top) return;
+    const b = (i: number) => !!p.buttons[i]?.pressed, ax = p.axes[0] ?? 0, ay = p.axes[1] ?? 0;
+    const dirs: [boolean, 'up' | 'down' | 'left' | 'right'][] = [[b(12) || ay < -0.6, 'up'], [b(13) || ay > 0.6, 'down'], [b(14) || ax < -0.6, 'left'], [b(15) || ax > 0.6, 'right']];
+    const held = dirs.find((d) => d[0]);
+    if (held && now > this.padRepeat) { this.move(held[1]); this.padRepeat = now + 180; }
+    if (!held) this.padRepeat = 0;
+    const edge = (i: number) => { const v = b(i), was = this.padPrev[i]; this.padPrev[i] = v; return v && !was; };
+    if (edge(0)) this.confirm();
+    if (edge(1) || edge(9)) this.back();
+  }
+}
+
+export function menu(items: [string, () => void, boolean?][]): HTMLElement {
   const m = h('div.menu');
-  for (const [label, fn, disabled] of items) m.append(h('button', { onclick: fn, disabled: !!disabled }, label));
+  for (const [label, fn, disabled] of items) m.append(h('button', { onclick: () => { audio.play('uiSelect'); fn(); }, disabled: !!disabled }, label));
   return m;
 }
-
-/** One screen visible at a time; screens are plain DOM, animated in with Anime.js. */
-export class Screens {
-  private current: HTMLElement | null = null;
-  private waveTimer: { revert(): unknown } | null = null;
-  private bgAnim: { revert(): unknown } | null = null;
-
-  show(el: HTMLElement): void {
-    const keepBg = this.bgAnim; this.bgAnim = null;
-    this.close();
-    this.bgAnim = keepBg;
-    this.current = el;
-    document.body.append(el);
-    animate(el, { opacity: [0, 1], duration: 300, ease: 'outQuad' });
-    const btns = el.querySelectorAll('.menu button');
-    if (btns.length) animate(btns, { opacity: [0, 1], y: [8, 0], delay: stagger(50, { start: 150 }), duration: 280, ease: 'outQuad' });
-    (el.querySelector('.menu button:not([disabled])') as HTMLButtonElement | null)?.focus({ preventScroll: true });
-  }
-  close(): void { this.waveTimer?.revert(); this.waveTimer = null; this.bgAnim?.revert(); this.bgAnim = null; this.current?.remove(); this.current = null; }
-  get open(): boolean { return !!this.current; }
-
-  loading(): { set(p: number, label?: string): void; done(): void } {
-    const bar = h('i'), lbl = h('div', {}, 'TUNING IN…');
-    const el = h('div.loading', {}, lbl, h('div.bar', {}, bar));
-    document.body.append(el);
-    return { set: (p, label) => { bar.style.width = `${p * 100}%`; if (label) lbl.textContent = label; }, done: () => el.remove() };
-  }
-
-  title(opts: { hasSave: boolean; offline: boolean; onContinue: () => void; onNew: () => void; onSettings: () => void; onControls: () => void; onSquad: () => void }): void {
-    const canvas = h<'canvas'>('canvas.wave');
-    const words = GAME.title.toUpperCase().split(' ');
-    const half = Math.ceil(words.length / 2);
-    const titleEl = h('h1', {}, words.slice(0, half).join(' '), h('br'), words.slice(half).join(' '));
-    const el = h('div.screen.title', {}, canvas, titleEl, h('div.sub', {}, GAME.tagline.toUpperCase()),
-      menu([
-        ['Continue', opts.onContinue, !opts.hasSave], ['New expedition', opts.onNew], ['The squad', opts.onSquad],
-        ['Settings', opts.onSettings], ['Controls', opts.onControls],
-      ]),
-      h('div#netfoot.foot', {}, footText(opts.offline)));
-    // painted street as a slowly drifting backdrop
-    const L = (n: string) => `url(${import.meta.env.BASE_URL}assets/layers/${n}.webp)`;
-    el.style.backgroundImage = ['linear-gradient(rgba(3,7,10,.55), rgba(3,7,10,.82))', L('07_vegetation'), L('05_abandoned_vehicles_props'), L('06_playable_ground'), L('04_main_street_storefronts'), L('03_mid_distance_structures'), L('02_distant_city_architecture'), L('01_distant_skyline')].join(',');
-    el.style.backgroundSize = 'cover, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%, auto 100%';
-    el.style.backgroundPosition = 'center, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%, 0 100%';
-    const pan = { x: 0 };
-    this.bgAnim?.revert();
-    this.bgAnim = animate(pan, { x: 1, duration: 60000, loop: true, alternate: true, ease: 'inOutSine', onUpdate: () => {
-      const f = [0, 0.9, 0.75, 0.7, 0.6, 0.35, 0.15, 0.05];
-      el.style.backgroundPositionX = f.map((k, i) => (i === 0 ? 'center' : `${-pan.x * k * 900}px`)).join(',');
-    } });
-    this.show(el);
-    animate(titleEl, { opacity: [0, 1], letterSpacing: ['0.4em', '0.06em'], duration: 1600, ease: 'outExpo' });
-    // radio waveform (procedural) — locks onto the "signal" every few seconds
-    const g = canvas.getContext('2d')!;
-    const draw = (t: number) => {
-      const w = (canvas.width = canvas.clientWidth * Math.min(2, devicePixelRatio || 1)), hh = (canvas.height = canvas.clientHeight * Math.min(2, devicePixelRatio || 1));
-      g.clearRect(0, 0, w, hh);
-      const lock = Math.max(0, Math.sin(t / 2400)) ** 6;
-      for (let layer = 0; layer < 3; layer++) {
-        g.beginPath();
-        g.strokeStyle = layer === 0 ? `rgba(90,209,230,${0.5 + lock * 0.5})` : `rgba(90,209,230,${0.15 - layer * 0.04})`;
-        g.lineWidth = layer === 0 ? 2 : 1;
-        for (let x = 0; x <= w; x += 3) {
-          const u = x / w, env = Math.sin(u * Math.PI);
-          const noise = Math.sin(u * 91 + t / 90 + layer) * Math.sin(u * 37 - t / 170) * (1 - lock) * 0.6;
-          const sig = Math.sin(u * 28 - t / 120) * lock;
-          const y = hh / 2 + (noise + sig + Math.sin(u * 13 + t / 300 + layer * 2) * 0.15) * env * hh * 0.38;
-          if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
-        }
-        g.stroke();
-      }
-    };
-    this.waveTimer = createTimer({ loop: true, duration: 1000, onUpdate: () => draw(performance.now()) });
-  }
-
-  pause(onResume: () => void, onSettings: () => void, onControls: () => void, onQuit: () => void, onRestart: () => void): void {
-    this.show(h('div.screen', {}, h('h1', { style: 'font-size:40px' }, 'PAUSED'), h('div.sub', {}, GAME.title.toUpperCase()),
-      menu([['Resume', onResume], ['Restart from checkpoint', onRestart], ['Settings', onSettings], ['Controls', onControls], ['Quit to title', onQuit]])));
-  }
-
-  settings(s: Settings, onChange: (s: Settings) => void, onBack: () => void): void {
-    const range = (label: string, key: keyof Settings, min: number, max: number, step: number) => {
-      const out = h('span', {}, String(s[key]));
-      const input = h('input', { type: 'range', min, max, step, value: String(s[key]), oninput: (e: Event) => {
-        (s as unknown as Record<string, number>)[key] = Number((e.target as HTMLInputElement).value); out.textContent = String(s[key]); onChange(s);
-      } });
-      return h('div.row', {}, h('span', {}, label), h('span', {}, input, ' ', out));
-    };
-    const check = (label: string, key: keyof Settings) => h('div.row', {}, h('span', {}, label), h('input', { type: 'checkbox', checked: !!s[key], onchange: (e: Event) => {
-      (s as unknown as Record<string, boolean>)[key] = (e.target as HTMLInputElement).checked; onChange(s);
-    } }));
-    const touchSel = h('select', { onchange: (e: Event) => { s.touchControls = (e.target as HTMLSelectElement).value as Settings['touchControls']; onChange(s); } },
-      ...(['auto', 'on', 'off'] as const).map((v) => h('option', { value: v, selected: s.touchControls === v }, v.toUpperCase())));
-    this.show(h('div.screen', {}, h('div.card', {}, h('h2', {}, 'SETTINGS'),
-      range('Master volume', 'masterVolume', 0, 1, 0.05), range('Effects', 'sfxVolume', 0, 1, 0.05), range('Ambience (rain, wind)', 'ambienceVolume', 0, 1, 0.05),
-      range('Render scale', 'renderScale', 0.5, 1, 0.25), check('Rain', 'rain'), check('Screen shake', 'screenShake'), check('Show FPS', 'showFps'),
-      h('div.row', {}, h('span', {}, 'Touch controls'), touchSel),
-      h('div.row', {}, h('span', {}, 'Graphics quality (bloom)'), h('select', { onchange: (e: Event) => { s.quality = (e.target as HTMLSelectElement).value as Settings['quality']; onChange(s); } },
-        ...(['high', 'low'] as const).map((v) => h('option', { value: v, selected: s.quality === v }, v.toUpperCase())))),
-      check('Squad name tags', 'nameTags'),
-      h('div', { style: 'margin-top:14px' }, menu([['Back', onBack]])))));
-  }
-
-  controls(onBack: () => void): void {
-    const k = (keys: string, what: string) => [h('kbd', {}, keys), h('span', {}, what)];
-    this.show(h('div.screen', {}, h('div.card', {}, h('h2', {}, 'CONTROLS'), h('div.keys', {},
-      ...k('A / D  ← →', 'Move'), ...k('Shift', 'Run (loud)'), ...k('C / S / Ctrl', 'Crouch — sneak, harder to spot'),
-      ...k('J / Left mouse', 'Fire weapon (very loud)'), ...k('K / F / Right mouse', 'Melee — silent; takedown on unaware infected'),
-      ...k('R', 'Reload'), ...k('H', 'Use medkit / bandage'), ...k('E / W / ↑', 'Search / interact'),
-      ...k('1–4 / Tab / Q', 'Switch survivor'), ...k('G', 'Squad: hold / follow'), ...k('I', 'Squad & inventory'), ...k('Esc / P', 'Pause'),
-      ...k('Gamepad', 'Stick move · RT fire · X melee · A use · B crouch · Y reload · LT switch'),
-      ...k('Touch', 'On-screen buttons appear automatically')),
-      h('p', { style: 'font-size:11px;color:var(--dim);margin-top:14px' }, 'Infected react to sound and movement. Gunfire pulls the whole street — sneak and use melee when you can.'),
-      menu([['Back', onBack]]))));
-  }
-
-  squad(portraits: string[], game: Game | null, onBack: () => void): void {
-    const card = h('div.card', {}, h('h2', {}, game ? 'SQUAD & SUPPLIES' : 'THE SQUAD'));
-    SURVIVORS.forEach((s, i) => {
-      const a = game?.survivors[i];
-      const status = a ? (a.alive ? `${Math.round(a.hp)}/${a.maxHp} HP · ${WEAPONS[a.weapon].name} (${a.mag[a.weapon] ?? 0})` : 'DOWN') : `${WEAPONS[s.weapon].name} · ${s.resistant ? 'resistant to the organism' : 'not exposed'}`;
-      card.append(h('div.bio', {}, h('img', { src: portraits[i], alt: s.name }), h('div', {}, h('b', {}, `${s.name} — ${s.roleLabel}`), h('div', {}, status), h('div', {}, s.bio), h('div', { style: 'color:var(--accent)' }, s.trait))));
-    });
-    if (game) {
-      const grid = h('div.keys');
-      for (const [id, n] of Object.entries(game.stash) as [ItemId, number][]) if (n) grid.append(h('kbd', {}, `${ITEMS[id].icon} ${n}`), h('span', {}, ITEMS[id].name));
-      card.append(h('h2', { style: 'margin-top:16px' }, 'STASH'), grid);
-    }
-    card.append(h('div', { style: 'margin-top:14px' }, menu([['Back', onBack]])));
-    this.show(h('div.screen', {}, card));
-  }
-
-  gameOver(onRetry: () => void, onQuit: () => void): void {
-    this.show(h('div.screen', {}, h('h1', { style: 'font-size:44px;color:#d2463a' }, 'THE SIGNAL GOES QUIET'), h('div.sub', {}, 'THE SQUAD DID NOT MAKE IT'), menu([['Retry from checkpoint', onRetry], ['Quit to title', onQuit]])));
-  }
-
-  complete(game: Game, onTitle: () => void): void {
-    const kills = game.killed.size, loot = game.looted.size, alive = game.survivors.filter((s) => s.alive).length;
-    this.show(h('div.screen', {}, h('h1', { style: 'font-size:42px' }, 'RELAY 7 RESTORED'), h('div.sub', {}, `${game.level.name.toUpperCase()} — COMPLETE`),
-      h('div.card', { style: 'text-align:center' },
-        h('div', {}, `Survivors: ${alive}/4 · Caches searched: ${loot} · Infected put down: ${kills}`),
-        h('p', { style: 'color:var(--dim);font-size:12px' }, 'The transmission is clearer now: coordinates, an emergency protocol — and a voice. The journey continues in the next chapter.'),
-        menu([['Back to title', onTitle]]))));
-  }
-}
+export const panel = (title: string, ...kids: (Node | string | null | false)[]) => h('div.card', {}, h('h2', {}, title), ...kids);

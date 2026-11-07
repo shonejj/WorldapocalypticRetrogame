@@ -1,105 +1,130 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { RenderPixelatedPass } from 'three/examples/jsm/postprocessing/RenderPixelatedPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-/** World view: 1 unit = 1 metre. Orthographic camera looking down -Z. */
-export const VIEW_HEIGHT = 6.9;
-export const CAMERA_Y = 2.62;
-export const CAMERA_Z = 60;
+export interface Quality { dpr: number; pixel: 0 | 2 | 3 | 4; bloom: boolean; shadows: boolean }
+export const QUALITY_PRESETS: Record<'high' | 'medium' | 'low', Quality> = {
+  high: { dpr: 1.5, pixel: 0, bloom: true, shadows: true },
+  medium: { dpr: 1.0, pixel: 0, bloom: true, shadows: true },
+  low: { dpr: 0.75, pixel: 0, bloom: false, shadows: false },
+};
 
-/** Final grade: teal shadows / warm highlights, vignette, film grain. */
+/** Colour grade + vignette + grain + damage tint, applied before OutputPass (linear space). */
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uVignette: { value: 0.42 }, uGrain: { value: 0.045 }, uHurt: { value: 0 } },
-  vertexShader: /* glsl */ `varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse; uniform float uTime; uniform float uVignette; uniform float uGrain; uniform float uHurt; varying vec2 vUv;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uHurt: { value: 0 }, uVignette: { value: 0.5 }, uGrain: { value: 0.035 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform float uHurt; uniform float uVignette; uniform float uGrain; varying vec2 vUv;
+    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
-      float l = dot(c.rgb, vec3(0.299, 0.587, 0.114));
-      vec3 shadowTint = vec3(0.86, 0.98, 1.08), highTint = vec3(1.08, 1.0, 0.9);
-      c.rgb *= mix(shadowTint, highTint, smoothstep(0.15, 0.75, l));
-      c.rgb = mix(vec3(l), c.rgb, 1.08);                                   // a touch more saturation
-      vec2 d = vUv - 0.5; float v = smoothstep(0.85, 0.2, length(d * vec2(1.25, 1.0)));
-      c.rgb *= mix(1.0, v, uVignette);
-      c.rgb = mix(c.rgb, c.rgb * vec3(1.6, 0.35, 0.3), uHurt * (1.0 - v));   // damage vignette
-      c.rgb += (hash(vUv * 900.0 + uTime) - 0.5) * uGrain;
+      float l = dot(c.rgb, vec3(0.2126,0.7152,0.0722));
+      c.rgb *= mix(vec3(0.86,1.0,1.12), vec3(1.1,1.0,0.86), smoothstep(0.02, 0.6, l));   // teal shadows / amber highlights
+      vec2 d = vUv - 0.5; float vig = smoothstep(0.85, 0.25, length(d * vec2(1.3, 1.0)));
+      c.rgb *= mix(1.0, vig, uVignette);
+      c.rgb = mix(c.rgb, c.rgb * vec3(1.8,0.35,0.3), uHurt * (1.0 - vig * 0.6));
+      c.rgb += (hash(vUv * 1000.0 + uTime) - 0.5) * uGrain * (0.4 + l);
       gl_FragColor = c;
     }`,
 };
 
+/**
+ * Renderer + post chain (threejs-scene-setup / threejs-materials-lighting):
+ * ACES tone mapping, soft shadows, a PMREM environment baked from a street-like scene for
+ * wet reflections, fog, and EffectComposer → [pixel pass | render] → bloom → grade → OutputPass.
+ */
 export class Renderer {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera: THREE.OrthographicCamera;
-  /** Move the rig to follow; shake offsets go on `shake`. */
-  readonly rig = new THREE.Group();
-  readonly shake = new THREE.Group();
-  renderScale = 1;
-  aspect = 16 / 9;
-  private composer: EffectComposer;
-  private bloom: UnrealBloomPass;
-  readonly grade: ShaderPass;
-  quality: 'high' | 'low' = 'high';
-  viewH = VIEW_HEIGHT;
+  readonly camera = new THREE.PerspectiveCamera(28, 16 / 9, 0.5, 900);
+  private composer!: EffectComposer;
+  private bloom!: UnrealBloomPass;
+  readonly grade = new ShaderPass(GradeShader);
+  quality: Quality = QUALITY_PRESETS.high;
+  /** Camera target and additive shake offset (camera-systems: shake rides on top of follow). */
+  focus = new THREE.Vector3(0, 1.9, 0);
+  shakeOffset = new THREE.Vector3();
+  distance = 17.5;
 
   constructor(readonly canvas: HTMLCanvasElement) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', alpha: false });
-    this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    this.renderer.setClearColor(0x070d14);
-    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
-    this.camera.position.z = CAMERA_Z;
-    this.scene.add(this.rig); this.rig.add(this.shake); this.shake.add(this.camera);
-    this.scene.fog = new THREE.Fog(0x22384a, 90, 640);
-    this.composer = new EffectComposer(this.renderer);
-    this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.6, 0.55, 0.78);
-    this.composer.addPass(this.bloom);
-    this.composer.addPass(new OutputPass());
-    this.grade = new ShaderPass(GradeShader);
-    this.composer.addPass(this.grade);
+    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.5;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
+    this.scene.fog = new THREE.FogExp2(0x1b2833, 0.016);
+    this.scene.background = new THREE.Color(0x070c12);
+    this.bakeEnvironment();
+    this.buildComposer();
     addEventListener('resize', () => this.resize());
     this.resize();
   }
 
-  setRenderScale(s: number): void { this.renderScale = s; this.resize(); }
-  setQuality(q: 'high' | 'low'): void { this.quality = q; this.bloom.enabled = q === 'high'; this.resize(); }
+  /** IBL without an HDR file: render a dark street-like room with warm lamp panels into PMREM. */
+  private bakeEnvironment(): void {
+    const env = new THREE.Scene();
+    env.add(new THREE.Mesh(new THREE.SphereGeometry(20, 16, 12), new THREE.MeshBasicMaterial({ color: 0x0e1820, side: THREE.BackSide })));
+    const panel = (c: number, x: number, y: number, z: number, s: number) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s * 0.5), new THREE.MeshBasicMaterial({ color: c })); m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m); };
+    panel(0xffb066, -8, 6, -10, 5); panel(0xffd8a0, 9, 7, -6, 3); panel(0xff9a4a, 2, 3, -14, 6); panel(0x6fa0c0, 0, 15, 0, 12); panel(0x2a4458, -12, 2, 8, 8);
+    const pm = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pm.fromScene(env, 0.04).texture;
+    this.scene.environmentIntensity = 0.85;
+    pm.dispose();
+  }
+
+  private buildComposer(): void {
+    this.composer?.dispose();
+    this.composer = new EffectComposer(this.renderer);
+    if (this.quality.pixel) {
+      const px = new RenderPixelatedPass(this.quality.pixel, this.scene, this.camera);
+      px.normalEdgeStrength = 0.25; px.depthEdgeStrength = 0.35;
+      this.composer.addPass(px);
+    } else this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(512, 256), 0.55, 0.6, 0.82);
+    this.bloom.enabled = this.quality.bloom;
+    this.composer.addPass(this.bloom);
+    this.composer.addPass(this.grade);
+    this.composer.addPass(new OutputPass());
+  }
+
+  setQuality(q: Quality): void {
+    const rebuild = q.pixel !== this.quality.pixel;
+    this.quality = q;
+    this.renderer.shadowMap.enabled = q.shadows;
+    this.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+    if (rebuild) this.buildComposer(); else this.bloom.enabled = q.bloom;
+    this.resize();
+  }
 
   resize(): void {
     const w = innerWidth, h = innerHeight;
-    this.aspect = w / h;
-    const dpr = Math.min(devicePixelRatio || 1, this.quality === 'high' ? 2 : 1.25) * this.renderScale;
-    this.renderer.setPixelRatio(dpr);
-    this.renderer.setSize(w, h, true);
-    this.composer.setPixelRatio(dpr);
-    this.composer.setSize(w, h);
-    this.bloom.resolution.set(w * dpr * 0.5, h * dpr * 0.5);
-    // extra-wide screens (phones in landscape) zoom in a little so characters stay readable
-    this.viewH = VIEW_HEIGHT * Math.min(1, Math.max(0.82, 1.9 / this.aspect));
-    const half = this.viewH / 2;
-    this.camera.left = -half * this.aspect; this.camera.right = half * this.aspect;
-    this.camera.top = half; this.camera.bottom = -half;
+    const dpr = Math.min(devicePixelRatio || 1, this.quality.dpr);
+    this.renderer.setPixelRatio(dpr); this.renderer.setSize(w, h);
+    this.composer.setPixelRatio(dpr); this.composer.setSize(w, h);
+    this.camera.aspect = w / h;
+    // keep ~the same horizontal coverage on tall/narrow screens (phones in portrait/tablets)
+    this.camera.fov = w / h < 1.4 ? 34 : 28;
     this.camera.updateProjectionMatrix();
   }
 
-  get viewWidth(): number { return this.viewH * this.aspect; }
-
-  /** World → CSS pixel position (for name tags / prompts). */
-  toScreen(x: number, y: number, z = 0): { x: number; y: number } {
-    const v = new THREE.Vector3(x, y, z).project(this.camera);
-    return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight };
-  }
+  /** Visible half-width of the gameplay plane (z = 0) at the current camera distance. */
+  get halfWidth(): number { return Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)) * this.distance * this.camera.aspect; }
 
   render(time: number): void {
+    const f = this.focus, s = this.shakeOffset;
+    this.camera.position.set(f.x + s.x, f.y + 0.75 + s.y, this.distance);
+    this.camera.lookAt(f.x + s.x * 0.5, f.y + s.y * 0.5, 0);
+    this.camera.rotation.z += s.z;
     this.grade.uniforms.uTime.value = time % 100;
     this.composer.render();
   }
-}
 
-/** Anchored plane geometry (origin at anchor). */
-export function anchoredPlane(w: number, h: number, ax: number, ay: number): THREE.PlaneGeometry {
-  const g = new THREE.PlaneGeometry(w, h); g.translate(w * (0.5 - ax), h * (0.5 - ay), 0); return g;
+  /** World → CSS pixels (HUD name tags, prompts). */
+  toScreen(x: number, y: number, z = 0): { x: number; y: number; visible: boolean } {
+    const v = new THREE.Vector3(x, y, z).project(this.camera);
+    return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight, visible: v.z < 1 && Math.abs(v.x) < 1.2 };
+  }
 }

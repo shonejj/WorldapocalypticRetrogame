@@ -1,202 +1,163 @@
-import { INFECTED, MELEE_SWING_TIME, WEAPONS, type InfectedDef, type InfectedType, type ItemId, type SurvivorDef, type WeaponId } from './data';
-import type { SpriteRagdoll } from '../physics/spriteRagdoll';
-import { clamp } from '../core/rng';
+import { INFECTED, MELEE_TIME, SURVIVORS, WEAPONS, type InfectedDef, type InfectedType, type ItemId, type SurvivorDef, type WeaponId } from './data';
+import { clamp } from '../core/math';
 
-/** What a brain (player input, companion AI, infected AI, later: network) wants this tick. */
+/**
+ * Everything that moves is an Actor driven by an Intent from a Brain (player input, squad
+ * utility AI, infected behavior tree — later: network). Same rules for all → fair stealth,
+ * and the multiplayer seam stays in one place. Pure simulation: no three.js/planck here.
+ */
 export interface Intent {
-  moveX: number; run: boolean; crouch: boolean; aim: boolean;
-  fire: boolean; melee: boolean; reload: boolean; heal: boolean; faceX?: number;
+  moveX: number; run: boolean; crouch: boolean; aim: boolean; faceX?: number;
+  fire: boolean; melee: boolean; reload: boolean; heal: boolean; throwAt?: number;
 }
-export const idleIntent = (): Intent => ({ moveX: 0, run: false, crouch: false, aim: false, fire: false, melee: false, reload: false, heal: false });
+export const idle = (): Intent => ({ moveX: 0, run: false, crouch: false, aim: false, fire: false, melee: false, reload: false, heal: false });
 
-/** Services the world provides to actors (implemented by Game). */
-export interface ActorHost {
-  fire(a: Actor): void;
-  meleeStrike(a: Actor): void;
-  clawStrike(a: Actor): void;
-  footstep(a: Actor): void;
-  ammo(type: ItemId): number;
-  takeAmmo(type: ItemId, n: number): number;
-  sfx(kind: 'empty' | 'reload' | 'heal', a: Actor): void;
-  heal(a: Actor): void;
+/** World services actors call into (implemented by Game). */
+export interface Host {
+  fire(a: Actor): void; meleeHit(a: Actor): void; clawHit(a: Actor): void; footstep(a: Actor): void;
+  ammo(t: ItemId): number; take(t: ItemId, n: number): number; heal(a: Actor): boolean; throwLure(a: Actor, targetX: number): void;
+  sfx(kind: 'dryfire' | 'reload' | 'heal' | 'throw', a: Actor): void;
 }
 
-export type InfectedState = 'dormant' | 'waking' | 'idle' | 'wander' | 'investigate' | 'chase' | 'stagger';
-
+export type ZState = 'dormant' | 'waking' | 'idle' | 'wander' | 'investigate' | 'chase' | 'stagger';
 let nextId = 1;
 
 export class Actor {
   readonly id = nextId++;
-  readonly team: 'survivor' | 'infected';
-  readonly name: string;
-  readonly scale: number;
+  readonly team: 'squad' | 'infected';
   readonly survivor?: SurvivorDef;
   readonly infected?: InfectedDef;
-  readonly infectedType?: InfectedType;
+  readonly type?: InfectedType;
+  readonly name: string;
+  readonly scale: number;
   levelId = '';
 
-  x: number; y = 0; vx = 0; knockVx = 0;
-  facing: 1 | -1 = 1;
+  x: number; vx = 0; knock = 0; facing: 1 | -1 = 1;
   hp: number; maxHp: number; alive = true;
-  crouching = false; running = false; aimT = 0; forceAim = false;
+  hunger = 1; thirst = 1; bleed = 0;
+  crouching = false; running = false;
 
-  weapon: WeaponId; meleeWeapon: WeaponId;
-  mag: Partial<Record<WeaponId, number>> = {};
-  cooldown = 0; reloadT = 0; meleeT = -1; meleeHitDone = false;
-  attackT = -1; attackHitDone = false; attackCooldown = 0;
-  healT = -1;
+  weapon: WeaponId; mag = 0; drawn = false; drawT = -1; lastCombat = -99;
+  cooldown = 0; reloadT = -1; meleeT = -1; meleeDone = false; healT = -1; throwT = -1; throwX = 0;
+  aimT = 0; recoil = 0; hurtT = 0; stun = 0; shots = 0;
+  attackT = -1; attackDone = false; attackCd = 0;
 
-  hurtT = 0; recoil = 0; stunT = 0;
-  phase = 0; time = Math.random() * 10; lastStepPhase = 0;
-  /** Weapon slung on the back until the first time the survivor needs it. */
-  holstered = true; drawT = -1; lastCombat = -100; shotsFired = 0;
+  phase = 0; time = Math.random() * 9; private lastStep = 0;
+  // infected blackboard-facing state (owned by the brain)
+  state: ZState = 'idle'; suspicion = 0; targetId = 0; homeX: number; investigateX = 0; stateT = 0;
 
-  // infected AI state (owned by InfectedBrain)
-  state: InfectedState = 'idle';
-  suspicion = 0; targetId = 0; homeX: number; investigateX = 0; stateT = 0;
-
-  ragdoll: SpriteRagdoll | null = null;
-  light = 0.4;                 // set by renderer: 0 dark … 1 under a lamp
-  lastHit = { dir: 1 as 1 | -1, power: 0 };
-
-  constructor(opts: { x: number; survivor?: SurvivorDef; infected?: InfectedType }) {
-    this.x = opts.x; this.homeX = opts.x;
-    if (opts.survivor) {
-      const s = opts.survivor;
-      this.team = 'survivor'; this.survivor = s; this.name = s.name; this.scale = 1;
-      this.hp = this.maxHp = s.maxHp; this.weapon = s.weapon; this.meleeWeapon = s.melee;
-      this.mag[s.weapon] = WEAPONS[s.weapon].mag;
+  constructor(o: { x: number; survivor?: SurvivorDef['id']; infected?: InfectedType }) {
+    this.x = o.x; this.homeX = o.x;
+    if (o.survivor) {
+      const s = SURVIVORS.find((d) => d.id === o.survivor)!;
+      this.team = 'squad'; this.survivor = s; this.name = s.name; this.scale = 1;
+      this.hp = this.maxHp = s.maxHp; this.weapon = s.weapon; this.mag = WEAPONS[s.weapon].mag;
     } else {
-      const t = opts.infected ?? 'common', d = INFECTED[t];
-      this.team = 'infected'; this.infected = d; this.infectedType = t; this.name = d.name;
-      this.scale = d.scale * (0.95 + Math.random() * 0.08);
-      this.hp = this.maxHp = d.maxHp; this.weapon = 'pipe'; this.meleeWeapon = 'pipe';
+      const t = o.infected ?? 'common', d = INFECTED[t];
+      this.team = 'infected'; this.infected = d; this.type = t; this.name = d.name;
+      this.scale = d.scale * (0.96 + Math.random() * 0.08); this.hp = this.maxHp = d.hp; this.weapon = 'pipe';
     }
   }
 
-  get height(): number { return (this.state === 'dormant' && this.team === 'infected' ? 0.95 : this.crouching ? 1.25 : 1.82) * this.scale; }
-  get speedAbs(): number { return Math.abs(this.vx); }
-  get weaponDef() { return WEAPONS[this.weapon]; }
-  get busy(): boolean { return this.reloadT > 0 || this.meleeT >= 0 || this.healT >= 0 || this.stunT > 0; }
+  get w() { return WEAPONS[this.weapon]; }
+  get height() { return (this.state === 'dormant' && this.team === 'infected' ? 0.7 : this.crouching ? 1.2 : 1.8) * this.scale; }
+  get busy() { return this.reloadT >= 0 || this.meleeT >= 0 || this.healT >= 0 || this.throwT >= 0 || this.stun > 0 || this.drawT >= 0; }
+  /** 0..1 how "aimed" the survivor is (animation blend + accuracy). */
+  get aimed() { return this.team === 'squad' && this.drawn && this.reloadT < 0 && this.healT < 0 && this.aimT > 0; }
 
-  damage(amount: number, dir: 1 | -1, knock: number): void {
+  damage(amount: number, dir: number, knock: number): void {
     if (!this.alive) return;
-    this.hp -= amount;
-    this.hurtT = 1;
-    const resist = this.infected?.knockbackResist ?? 1;
-    this.knockVx += dir * knock * resist * 0.6;
-    if (this.infected && resist > 0.5) this.stunT = Math.max(this.stunT, 0.18 * resist);
-    this.lastHit = { dir, power: knock };
+    this.hp -= amount; this.hurtT = 1;
+    const poise = this.infected?.poise ?? 1;
+    this.knock += dir * knock * poise * 0.6;
+    if (this.infected && poise > 0.5) this.stun = Math.max(this.stun, 0.2 * poise);
+    if (this.team === 'squad' && amount >= 8 && Math.random() < 0.35) this.bleed = Math.min(1, this.bleed + 0.5);
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }
   }
 
-  /** One fixed simulation step. */
-  step(dt: number, it: Intent, host: ActorHost, levelWidth: number): void {
+  step(dt: number, it: Intent, host: Host, x0: number, x1: number): void {
     if (!this.alive) return;
     this.time += dt;
-    this.cooldown = Math.max(0, this.cooldown - dt);
-    this.attackCooldown = Math.max(0, this.attackCooldown - dt);
-    this.aimT = Math.max(0, this.aimT - dt);
-    this.hurtT = Math.max(0, this.hurtT - dt * 3);
-    this.recoil = Math.max(0, this.recoil - dt * 6);
-    this.stunT = Math.max(0, this.stunT - dt);
+    this.cooldown = Math.max(0, this.cooldown - dt); this.attackCd = Math.max(0, this.attackCd - dt);
+    this.aimT = Math.max(0, this.aimT - dt); this.recoil = Math.max(0, this.recoil - dt * 7);
+    this.hurtT = Math.max(0, this.hurtT - dt * 3); this.stun = Math.max(0, this.stun - dt);
     const dormant = this.team === 'infected' && (this.state === 'dormant' || this.state === 'waking');
 
-    // ---- movement
-    this.crouching = this.team === 'survivor' && it.crouch;
+    // ---- movement (accelerate toward target speed; knockback decays)
+    this.crouching = this.team === 'squad' && it.crouch;
     this.running = it.run && !this.crouching && Math.abs(it.moveX) > 0.1;
-    let speed: number;
-    if (this.survivor) speed = this.running ? this.survivor.run : this.survivor.walk * (this.crouching ? 0.5 : 1);
-    else speed = (it.run ? this.infected!.chase : this.infected!.walk);
-    if (this.busy && this.meleeT < 0) speed *= this.reloadT > 0 ? 0.6 : 0.0;
-    if (this.meleeT >= 0 || this.attackT >= 0) speed *= 0.25;
-    if (dormant) speed = 0;
+    let speed = this.survivor ? (this.running ? this.survivor.run : this.survivor.walk * (this.crouching ? 0.55 : 1)) : it.run ? this.infected!.chase : this.infected!.walk;
+    if (this.survivor && this.hp / this.maxHp < 0.3) speed *= 0.8;                       // limping when badly hurt
+    if (this.reloadT >= 0) speed *= 0.55;
+    if (this.meleeT >= 0 || this.attackT >= 0 || this.throwT >= 0) speed *= 0.25;
+    if (this.healT >= 0 || this.stun > 0 || dormant) speed = 0;
     const target = clamp(it.moveX, -1, 1) * speed;
-    const accel = Math.abs(target) > Math.abs(this.vx) ? 10 : 14;
-    this.vx += (target - this.vx) * Math.min(1, accel * dt);
-    this.knockVx *= Math.exp(-7 * dt);
-    this.x = clamp(this.x + (this.vx + this.knockVx) * dt, 0.4, levelWidth - 0.4);
+    this.vx += (target - this.vx) * Math.min(1, (Math.abs(target) > Math.abs(this.vx) ? 10 : 14) * dt);
+    this.knock *= Math.exp(-7 * dt);
+    this.x = clamp(this.x + (this.vx + this.knock) * dt, x0 + 0.4, x1 - 0.4);
     const face = it.faceX ?? it.moveX;
     if (Math.abs(face) > 0.1 && this.meleeT < 0 && this.attackT < 0 && !dormant) this.facing = face > 0 ? 1 : -1;
 
-    // ---- gait phase + footsteps
-    const stride = (this.running || it.run ? 1.9 : 1.25) * this.scale;
-    this.phase += (Math.abs(this.vx) / stride) * Math.PI * 2 * dt;
-    if (Math.floor(this.phase / Math.PI) !== Math.floor(this.lastStepPhase / Math.PI) && Math.abs(this.vx) > 0.3) host.footstep(this);
-    this.lastStepPhase = this.phase;
+    // ---- footsteps from gait phase
+    const stride = (this.running || it.run ? 1.9 : 1.2) * this.scale;
+    this.phase += (Math.abs(this.vx) / stride) * Math.PI * dt * 2;
+    if (Math.floor(this.phase / Math.PI) !== Math.floor(this.lastStep / Math.PI) && Math.abs(this.vx) > 0.3) host.footstep(this);
+    this.lastStep = this.phase;
 
-    // ---- weapons (survivors)
-    if (this.team === 'survivor') this.stepWeapons(dt, it, host);
-    else this.stepClaws(dt, it, host);
-
-    // ---- weapon readiness (draw from the back when combat starts)
-    if (this.team === 'survivor') {
-      const wantsWeapon = it.aim || it.fire || this.aimT > 0;
-      if (wantsWeapon) this.lastCombat = this.time;
-      if (wantsWeapon && this.holstered && this.drawT < 0) this.drawT = 0;
-      if (this.drawT >= 0) { this.drawT += dt; if (this.drawT >= 0.6) { this.drawT = -1; this.holstered = false; } }
-      if (!this.holstered && this.time - this.lastCombat > 9) this.holstered = true;
-    }
+    if (this.team === 'squad') this.stepSurvivor(dt, it, host); else this.stepInfected(dt, it, host);
   }
 
-  /** Is the survivor currently in an aiming stance? */
-  get aiming(): boolean { return this.team === 'survivor' && !this.holstered && this.drawT < 0 && (this.aimT > 0 || this.forceAim) && this.reloadT <= 0 && this.healT < 0; }
-
-  private stepWeapons(dt: number, it: Intent, host: ActorHost): void {
-    const w = this.weaponDef;
-    // healing (medkit use) is an action that blocks other actions
-    if (this.healT >= 0) {
-      this.healT += dt;
-      if (this.healT >= 1.1) { this.healT = -1; host.heal(this); }
-      return;
-    }
+  private stepSurvivor(dt: number, it: Intent, host: Host): void {
+    const w = this.w;
+    const wants = it.aim || it.fire;
+    if (wants) this.lastCombat = this.time;
+    if (it.aim) this.aimT = Math.max(this.aimT, 0.25);
+    // draw from the back the first time a weapon is needed; sling it after a quiet spell
+    if (this.drawT >= 0) { this.drawT += dt; if (this.drawT >= 0.55) { this.drawT = -1; this.drawn = true; } return; }
+    if (wants && !this.drawn && !this.busy) { this.drawT = 0; return; }
+    if (this.drawn && this.time - this.lastCombat > 10 && !this.busy) this.drawn = false;
+    // heal (blocks everything)
+    if (this.healT >= 0) { this.healT += dt; if (this.healT >= 1.1) { this.healT = -1; host.heal(this); } return; }
     if (it.heal && !this.busy) { this.healT = 0; host.sfx('heal', this); return; }
+    // throw a lure
+    if (this.throwT >= 0) { this.throwT += dt; if (this.throwT >= 0.35 && this.throwX !== 0) { host.throwLure(this, this.throwX); this.throwX = 0; } if (this.throwT >= 0.6) this.throwT = -1; return; }
+    if (it.throwAt !== undefined && !this.busy && host.ammo('bottle') > 0) { this.throwT = 0; this.throwX = it.throwAt; this.facing = it.throwAt > this.x ? 1 : -1; host.sfx('throw', this); return; }
     // reload
-    if (this.reloadT > 0) {
-      this.reloadT -= dt;
-      if (this.reloadT <= 0 && w.ammo) {
-        const need = w.mag - (this.mag[this.weapon] ?? 0);
-        this.mag[this.weapon] = (this.mag[this.weapon] ?? 0) + host.takeAmmo(w.ammo, need);
-      }
+    if (this.reloadT >= 0) {
+      this.reloadT += dt;
+      if (this.reloadT >= w.reload) { this.reloadT = -1; if (w.ammo) this.mag += host.take(w.ammo, w.mag - this.mag); }
       return;
     }
-    if (it.reload && w.ammo && (this.mag[this.weapon] ?? 0) < w.mag && host.ammo(w.ammo) > 0 && this.meleeT < 0) {
-      this.reloadT = w.reload; host.sfx('reload', this); return;
-    }
-    // melee swing
+    if (it.reload && w.ammo && this.mag < w.mag && host.ammo(w.ammo) > 0 && this.meleeT < 0) { this.reloadT = 0; host.sfx('reload', this); return; }
+    // melee
     if (this.meleeT >= 0) {
       this.meleeT += dt;
-      if (!this.meleeHitDone && this.meleeT >= MELEE_SWING_TIME * 0.45) { this.meleeHitDone = true; host.meleeStrike(this); }
-      if (this.meleeT >= MELEE_SWING_TIME) this.meleeT = -1;
+      if (!this.meleeDone && this.meleeT >= MELEE_TIME * 0.45) { this.meleeDone = true; host.meleeHit(this); }
+      if (this.meleeT >= MELEE_TIME) this.meleeT = -1;
       return;
     }
-    if (it.melee && this.cooldown <= 0) {
-      this.meleeT = 0; this.meleeHitDone = false; this.cooldown = WEAPONS[this.meleeWeapon].cooldown; return;
-    }
+    if (it.melee && this.cooldown <= 0) { this.meleeT = 0; this.meleeDone = false; this.cooldown = WEAPONS.pipe.cooldown; return; }
     // fire
-    if (it.fire && this.cooldown <= 0 && (this.holstered || this.drawT >= 0)) { this.aimT = 1.6; return; }
-    if (it.fire && this.cooldown <= 0) {
-      if (!w.ammo) { this.meleeT = 0; this.meleeHitDone = false; this.cooldown = w.cooldown; return; }
-      const m = this.mag[this.weapon] ?? 0;
-      if (m <= 0) {
-        if (host.ammo(w.ammo) > 0) { this.reloadT = w.reload; host.sfx('reload', this); }
-        else { host.sfx('empty', this); this.cooldown = 0.4; }
+    if (it.fire && this.cooldown <= 0 && this.drawn) {
+      this.aimT = 1.5;
+      if (!w.ammo) { this.meleeT = 0; this.meleeDone = false; this.cooldown = w.cooldown; return; }
+      if (this.mag <= 0) {
+        if (host.ammo(w.ammo) > 0) { this.reloadT = 0; host.sfx('reload', this); } else { host.sfx('dryfire', this); this.cooldown = 0.35; }
         return;
       }
-      this.mag[this.weapon] = m - 1;
-      this.cooldown = w.cooldown; this.aimT = 1.6; this.recoil = 1; this.shotsFired++;
+      this.mag--; this.cooldown = w.cooldown; this.recoil = 1; this.shots++;
       host.fire(this);
     }
   }
 
-  private stepClaws(dt: number, it: Intent, host: ActorHost): void {
+  private stepInfected(dt: number, it: Intent, host: Host): void {
     const d = this.infected!;
     if (this.attackT >= 0) {
       this.attackT += dt;
-      if (!this.attackHitDone && this.attackT >= d.attackTime * 0.55) { this.attackHitDone = true; host.clawStrike(this); }
-      if (this.attackT >= d.attackTime) { this.attackT = -1; this.attackCooldown = d.cooldown; }
+      if (!this.attackDone && this.attackT >= d.windup * 0.6) { this.attackDone = true; host.clawHit(this); }
+      if (this.attackT >= d.windup) { this.attackT = -1; this.attackCd = d.cooldown; }
       return;
     }
-    if (it.melee && this.attackCooldown <= 0 && this.stunT <= 0) { this.attackT = 0; this.attackHitDone = false; }
+    if (it.melee && this.attackCd <= 0 && this.stun <= 0) { this.attackT = 0; this.attackDone = false; }
   }
 }

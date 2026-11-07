@@ -1,39 +1,27 @@
 import { describe, expect, it } from 'vitest';
-import manifest from '../src/game/assetManifest.json';
-import { createWorld, STEP } from '../src/physics/world';
-import { createSpriteRagdoll, kickAll, kickPart } from '../src/physics/spriteRagdoll';
+import { createWorld } from '../src/physics/world';
+import { createRagdoll, partPivot, shove } from '../src/physics/ragdoll';
+import { PARTS, targetPose, type AnimIn } from '../src/game/rig';
 
-const sheets = manifest.chars;
+const pose = targetPose({ t: 0, phase: 1, speed: 1.6, run: false, crouch: false, gait: 'survivor', stance: 'none', aim: 0, recoil: 0, melee: 0, reload: 0, heal: 0, hurt: 0, attack: 0, throwT: 0, dormant: false, drawn: false } as AnimIn);
 
-function drop(id: keyof typeof sheets, facing: 1 | -1, dv: number) {
-  const world = createWorld(100);
-  const rd = createSpriteRagdoll(world, sheets[id], 50, 1, facing, { x: 1.2 * facing, y: 0 });
-  kickAll(rd, { x: dv * 0.45, y: 0.4 }); kickPart(rd, 'torso', { x: dv, y: 0.6 }); kickPart(rd, 'head', { x: dv * 1.3, y: 0.8 });
-  for (let i = 0; i < 60 * 5; i++) world.step(STEP, 8, 3);
-  return rd;
-}
-
-describe('sprite ragdoll (built from the painted cut-out parts)', () => {
-  it('has every part and weighs roughly an adult', () => {
-    const rd = drop('reed', 1, 0);
-    expect([...rd.bodies.keys()].sort()).toEqual(['head', 'shinB', 'shinF', 'thighB', 'thighF', 'torso']);
-    const mass = [...rd.bodies.values()].reduce((m, b) => m + b.getMass(), 0);
-    expect(mass).toBeGreaterThan(40); expect(mass).toBeLessThan(120);
+describe('ragdoll', () => {
+  it('spawns exactly at the animated pose (pivots match FK)', () => {
+    const w = createWorld(0, 100), rd = createRagdoll(w, pose, 50, 0, 1, 1, { x: 0, y: 0 });
+    const head = partPivot(rd, 'head'), torso = partPivot(rd, 'torso');
+    expect(torso.x).toBeCloseTo(50, 3); expect(head.y).toBeGreaterThan(torso.y + 0.4);
   });
-
-  for (const id of ['reed', 'infected_a'] as const) for (const facing of [1, -1] as const) {
-    it(`${id} collapses, stays together and comes to rest (facing ${facing})`, () => {
-      const rd = drop(id, facing, 2.5 * facing);
-      const t = rd.bodies.get('torso')!.getPosition();
-      expect(t.y).toBeLessThan(0.6);
-      expect(Math.abs(t.x - 50)).toBeLessThan(6);
-      for (const b of rd.bodies.values()) {
-        const p = b.getPosition();
-        expect(Number.isFinite(p.x) && Number.isFinite(p.y)).toBe(true);
-        expect(Math.hypot(p.x - t.x, p.y - t.y)).toBeLessThan(1.4);
-        expect(p.y).toBeGreaterThan(-0.05);
-      }
-      expect(rd.bodies.get('torso')!.getLinearVelocity().length()).toBeLessThan(0.25);
+  for (const facing of [1, -1] as const) for (const scale of [1, 1.35]) {
+    it(`falls, holds together and rests (facing ${facing}, scale ${scale})`, () => {
+      const w = createWorld(0, 100), rd = createRagdoll(w, pose, 50, 0, facing, scale, { x: facing * 1.2, y: 0 });
+      shove(rd, facing, 3);
+      for (let i = 0; i < 60 * 6; i++) w.step(1 / 60, 8, 3);
+      const t = rd.bodies.torso.getPosition();
+      const mass = PARTS.reduce((m, p) => m + rd.bodies[p].getMass(), 0);
+      expect(mass).toBeGreaterThan(40 * scale); expect(mass).toBeLessThan(150 * scale * scale);
+      expect(t.y).toBeLessThan(0.5 * scale); expect(Math.abs(t.x - 50)).toBeLessThan(7);
+      for (const p of PARTS) { const q = rd.bodies[p].getPosition(); expect(q.y).toBeGreaterThan(-0.05); expect(Math.hypot(q.x - t.x, q.y - t.y)).toBeLessThan(1.6 * scale); }
+      expect(rd.bodies.torso.getLinearVelocity().length()).toBeLessThan(0.3);
     });
   }
 });

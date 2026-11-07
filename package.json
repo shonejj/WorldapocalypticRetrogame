@@ -1,7 +1,7 @@
 {
   "name": "the-last-frequency",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "scripts": {
@@ -10,19 +10,17 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run test && npm run build",
-    "assets": "node scripts/build-assets.mjs",
-    "assets:extract": "node scripts/extract-video.mjs assets-src/video/reed_anim.mp4 reed"
+    "check": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "animejs": "^4.5.0",
+    "inkjs": "^2.4.0",
     "planck": "^1.5.1",
     "three": "^0.187.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
     "@types/three": "^0.187.0",
-    "sharp": "^0.34.5",
     "typescript": "^5.9.3",
     "vite": "^8.3.6",
     "vitest": "^5.1.0"
