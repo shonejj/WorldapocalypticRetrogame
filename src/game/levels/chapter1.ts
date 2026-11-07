@@ -32,7 +32,7 @@ export const CHAPTER1: LevelDef = {
   poles: [-14, 2, 18, 34, 50, 66, 82, 98, 114, 130, 146],
   fences: [[-4, 3], [36, 46], [67.5, 97], [107, 136], [148, 165]],
   trees: [41, 70, 112, 150],
-  vehicles: [{ x: 0.5, kind: 'van', z: -7.5 }, { x: 6, kind: 'sedan' }, { x: 21, kind: 'hatch', flip: true }, { x: 39, kind: 'van', z: -8, flip: true }, { x: 42, kind: 'van' }, { x: 52, kind: 'truck', flip: true }, { x: 72, kind: 'bus', z: -7 }, { x: 86, kind: 'sedan', flip: true }, { x: 104, kind: 'hatch', z: -7 }, { x: 126, kind: 'van', flip: true, z: -7.5 }],
+  vehicles: [{ x: 0.5, kind: 'van', z: -7.5 }, { x: 6, kind: 'sedan' }, { x: 21, kind: 'hatch', flip: true }, { x: 39, kind: 'van', z: -8, flip: true }, { x: 42, kind: 'van' }, { x: 63.5, kind: 'truck', flip: true }, { x: 72, kind: 'bus', z: -7 }, { x: 86, kind: 'sedan', flip: true }, { x: 104, kind: 'hatch', z: -7 }, { x: 126, kind: 'van', flip: true, z: -7.5 }],
   props: [
     { x: -2.5, kind: 'dumpster', z: -3.4 }, { x: -6, kind: 'trashbag', z: -3.7 }, { x: 4, kind: 'crate' }, { x: 4.8, kind: 'crate' },
     { x: 15, kind: 'barrel' }, { x: 15.6, kind: 'barrel' }, { x: 24, kind: 'cone', z: 1.0 }, { x: 31, kind: 'trashbag', z: -3.7 }, { x: 38, kind: 'barrier' },

@@ -11,7 +11,7 @@ import { vehicle } from '../art/vehicles';
 import { tree, grass } from '../art/nature';
 import { CAT, type Tag } from '../physics/world';
 import { Rng, hashString } from '../core/math';
-import { M, box, cyl, Batch } from '../art/kit';
+import { M, box, cyl, plane, Batch } from '../art/kit';
 
 export interface PropEnt { body: planck.Body; mesh: THREE.Object3D; z: number; material: Prop['material']; half: [number, number] }
 export interface BuiltWorld { group: THREE.Group; lights: LightSpot[]; props: PropEnt[]; beacon: THREE.Object3D | null; workbench: THREE.Object3D; blinkers: THREE.Sprite[] }
@@ -41,6 +41,16 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
   wb.add(M.wood('#5a3e28'), box(1.8, 0.08, 0.8, wx, 0.92, -1.6), ...[[-0.8, -0.3], [0.8, -0.3], [-0.8, 0.3], [0.8, 0.3]].map(([dx, dz]) => box(0.08, 0.9, 0.08, wx + dx, 0.45, -1.6 + dz)));
   wb.add(M.metal('#4a5052'), box(0.5, 0.2, 0.3, wx - 0.5, 1.06, -1.7), cyl(0.06, 0.06, 0.4, wx + 0.4, 1.1, -1.5, 8));
   wb.add(M.emissive(0xffc27a, 2.5), box(0.12, 0.25, 0.12, wx + 0.6, 1.08, -1.75));
+  // crafting station dressing: pegboard with tool silhouettes, vise, drawers, hanging work lamp, chalk sign
+  wb.add(M.wood('#6a5236'), box(2.0, 1.1, 0.04, wx, 1.75, -2.02));
+  const tool = M.metal('#3a3f42');
+  for (let i = 0; i < 7; i++) wb.add(tool, box(0.04, 0.28 + (i % 3) * 0.08, 0.03, wx - 0.8 + i * 0.26, 1.85, -1.98, { rotZ: (i % 2 ? 0.25 : -0.15) }));
+  wb.add(tool, box(0.36, 0.05, 0.03, wx - 0.35, 1.45, -1.98), cyl(0.09, 0.09, 0.03, wx + 0.45, 1.5, -1.98, 12, { rotX: Math.PI / 2 }));
+  wb.add(M.metal('#4f5a5e'), box(0.22, 0.18, 0.2, wx - 0.75, 1.05, -1.5), box(0.6, 0.6, 0.6, wx + 0.55, 0.3, -1.6));
+  wb.add(M.sign('WORKBENCH', '#202421', '#d9d2b8', 0.15), plane(0.9, 0.22, wx, 2.42, -2.0));
+  wb.add(M.dark(), cyl(0.008, 0.008, 1.2, wx - 0.1, 2.9, -1.6, 4), cyl(0.12, 0.2, 0.14, wx - 0.1, 2.28, -1.6, 10));
+  wb.add(M.emissive(0xffe2b0, 4), cyl(0.1, 0.1, 0.02, wx - 0.1, 2.2, -1.6, 10));
+  lights.push({ x: wx - 0.1, y: 2.1, z: -1.2, color: 0xffd9a0, intensity: 6, distance: 6 });
   const workbench = wb.build(); g.add(workbench);
   lights.push({ x: wx + 0.6, y: 1.4, z: -1.2, color: 0xffb066, intensity: 4, distance: 4, flicker: true });
 

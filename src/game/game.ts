@@ -13,7 +13,7 @@ import { CharacterView, infectedLook, type Look } from '../art/characters';
 import { SkinnedView, characterAssetReady } from '../art/skinned';
 type View = CharacterView | SkinnedView;
 const makeView = (look: Look, scale = 1): View => (characterAssetReady() ? new SkinnedView(look, scale) : new CharacterView(look, scale));
-import { pickupMesh } from '../art/props';
+import { pickupMesh, lootSpot } from '../art/props';
 import { createWorld, raycast, kick, CAT, type Tag } from '../physics/world';
 import { createRagdoll, destroyRagdoll, partPivot, shove, type Ragdoll } from '../physics/ragdoll';
 import { Fx } from '../render/fx';
@@ -22,7 +22,7 @@ import { CameraRig } from '../render/camera';
 import { LightPool } from '../render/lighting';
 import type { Renderer } from '../render/renderer';
 import { Emitter } from '../core/events';
-import { Rng } from '../core/math';
+import { Rng, hashString } from '../core/math';
 import { audio, type Sfx } from '../core/audio';
 import type { InputFrame } from '../core/input';
 
@@ -61,6 +61,7 @@ export class Game implements Host, AIWorld {
   private corpses: Corpse[] = []; private lures: Lure[] = [];
   private pickups: { id: string; x: number; item: ItemId; qty: number; mesh: THREE.Object3D }[] = [];
   interactables: Interactable[] = [];
+  private lootSpots = new Map<string, THREE.Object3D>();
   readonly player = new PlayerBrain();
   controlled = 0; hold = { on: false, x: 0 };
   looted = new Set<string>(); picked = new Set<string>(); killed = new Set<string>(); objectives = new Set<string>(); seenBeats = new Set<string>();
@@ -101,7 +102,10 @@ export class Game implements Host, AIWorld {
       this.add(a, v); this.infected.push(a); this.brains.set(a.id, new InfectedBrain());
     }
     // interactables
-    for (const c of level.caches) if (!this.looted.has(c.id)) this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise });
+    for (const c of level.caches) if (!this.looted.has(c.id)) {
+      this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise });
+      const m = lootSpot(hashString(c.id)); m.position.set(c.x, 0, -0.95); r.scene.add(m); this.lootSpots.set(c.id, m);
+    }
     this.interactables.push({ id: 'workbench', x: level.workbench.x, label: 'Use workbench', kind: 'workbench', time: 0 });
     if (!this.objectives.has(level.goal.objective)) this.interactables.push({ id: 'relay', x: level.goal.x, label: 'Restore the relay', kind: 'relay', time: 3 });
     for (const p of level.pickups) if (!this.picked.has(p.id)) { const m = pickupMesh(p.item); m.position.set(p.x, 0.0, 0.35); r.scene.add(m); this.pickups.push({ ...p, mesh: m }); }
@@ -324,6 +328,7 @@ export class Game implements Host, AIWorld {
       return;
     }
     this.looted.add(u.id);
+    const spot = this.lootSpots.get(u.id); if (spot) { spot.getObjectByName('glint')?.removeFromParent(); this.lootSpots.delete(u.id); }   // emptied: box stays, glint goes
     const loot = { ...u.loot } as Loot;
     if (this.leader.survivor?.role === 'scavenger') { const b = this.rng.pick<ItemId>(['ammo_9mm', 'scrap', 'cloth', 'bandage', 'water']); loot[b] = (loot[b] ?? 0) + (b === 'ammo_9mm' ? 6 : 1); }
     const got: string[] = [], left: string[] = [];
@@ -460,6 +465,7 @@ export class Game implements Host, AIWorld {
     if (this.built.beacon) (this.built.beacon as THREE.Mesh).visible = Math.sin(this.time * 3) > 0;
     this.built.blinkers.forEach((b, i) => { b.material.opacity = Math.sin(this.time * 2.2 + i * 1.7) > 0.2 ? 0.95 : 0.12; });
     this.wet.update(this.cam.x, this.time);
+    let i = 0; for (const m of this.lootSpots.values()) { const gl = m.getObjectByName('glint') as THREE.Sprite | undefined; if (gl) { const t = (this.time * 0.7 + i++ * 0.37) % 2.4; gl.material.opacity = t < 0.5 ? Math.sin((t / 0.5) * Math.PI) * 0.9 : 0; } }
     audio.setIntensity(this.intensity);
   }
 
@@ -472,6 +478,7 @@ export class Game implements Host, AIWorld {
       melee: a.meleeT >= 0 ? a.meleeT / MELEE_TIME : 0, reload: a.reloadT >= 0 ? a.reloadT / w.reload : 0, heal: a.healT >= 0 ? 1 : 0,
       hurt: a.hurtT, attack: a.attackT >= 0 ? a.attackT / a.infected!.windup : 0, throwT: a.throwT >= 0 ? a.throwT / 0.6 : 0,
       dormant: !sq && a.state === 'dormant', drawn: a.drawn || a.drawT > 0.3,
+      task: a === this.leader && this.using ? (this.using.kind === 'relay' ? 'interact' : 'search') : null,
     };
     targetPose(ai, this.tgt);
     blendPose(pose, this.tgt, !sq && a.state === 'waking' ? 3 : 18, dt);

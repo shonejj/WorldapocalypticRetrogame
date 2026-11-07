@@ -68,6 +68,8 @@ export interface AnimIn {
   gait: Gait; stance: Stance; aim: number;       // 0 lowered … 1 fully aimed (blended)
   recoil: number; melee: number; reload: number; heal: number; hurt: number; attack: number; throwT: number;
   dormant: boolean; drawn: boolean;
+  /** contextual task the actor is doing (skinned bodies pick a matching clip) */
+  task?: 'search' | 'interact' | null;
 }
 
 export function targetPose(i: AnimIn, p: Pose = zeroPose()): Pose {
