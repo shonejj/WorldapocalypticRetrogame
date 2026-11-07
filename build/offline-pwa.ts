@@ -73,7 +73,7 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(fetch(req).then((res) => put(req, res)).catch(() => caches.match(req, MATCH).then((hit) => hit || caches.match('index.html', MATCH))));
     return;
   }
-  // hashed assets: any cache (current or previous build), then network
-  e.respondWith(caches.match(req, MATCH).then((hit) => hit || fetch(req).then((res) => put(req, res))).catch(() => Response.error()));
+  // this build's cache first (models keep their names across builds), then older caches, then network
+  e.respondWith(caches.open(CACHE).then((c) => c.match(req, MATCH)).then((hit) => hit || caches.match(req, MATCH)).then((hit) => hit || fetch(req).then((res) => put(req, res))).catch(() => Response.error()));
 });
 `;
