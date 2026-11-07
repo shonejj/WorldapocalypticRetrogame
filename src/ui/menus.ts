@@ -130,3 +130,19 @@ export function choiceScreen(S: ScreenStack, choices: string[], pick: (i: number
 export function endScreen(S: ScreenStack, title: string, sub: string, body: string, items: [string, () => void][]): void {
   S.push({ el: h('div.screen.dim', {}, h('h1.small', {}, title), h('div.sub', {}, sub), body ? h('p.endtext', {}, body) : null, menu(items)), onBack: () => {} });
 }
+
+/** Opening: the broadcast that starts the story (skippable). Calls `done` once. */
+export function introScreen(S: ScreenStack, chapter: string, done: () => void): void {
+  const lines = ['…static…', 'PROTOCOL LIGHTHOUSE.', 'Resistant carriers, report to the coordinates.', 'This message repeats.'];
+  const text = h('div.introline'), card = h('div.introcard.hidden', {}, chapter);
+  let i = 0, over = false;
+  const finish = () => { if (over) return; over = true; clearInterval(timer); S.pop(); done(); };
+  const el = h('div.screen.intro', { onclick: finish }, text, card, h('div.skip', {}, 'Tap or press any key to skip'));
+  const timer = setInterval(() => {
+    if (i < lines.length) { text.textContent = lines[i++]; animate(text, { opacity: [0, 1], duration: 500 }); if (i === 1) audio.play('radioStatic'); }
+    else if (card.classList.contains('hidden')) { text.textContent = ''; card.classList.remove('hidden'); animate(card, { opacity: [0, 1], scale: [1.06, 1], duration: 900, ease: 'outQuad' }); }
+    else finish();
+  }, 1700);
+  S.push({ el, onBack: finish, modal: true });
+  addEventListener('keydown', function k() { removeEventListener('keydown', k); finish(); }, { once: true });
+}

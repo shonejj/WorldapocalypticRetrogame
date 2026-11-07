@@ -515,6 +515,9 @@ export class Game implements Host, AIWorld {
 
   dispose(): void {
     this.wet.dispose();
+    // free this level's GPU geometry (merged batches, clones) so retries do not grow memory;
+    // shared materials/textures stay cached and simply re-upload if used again
+    this.r.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && !(m.geometry as { userData?: { keep?: boolean } }).userData?.keep) m.geometry.dispose(); });
     this.r.scene.clear();
     this.ev.clear();
   }
