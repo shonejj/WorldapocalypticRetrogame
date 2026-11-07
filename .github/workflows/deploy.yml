@@ -31,5 +31,11 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      # If the repo's Pages source is still "Deploy from a branch", GitHub also runs its own
+      # Jekyll deploy of the RAW sources (index.html → ./src/main.ts, which browsers can't run)
+      # and whichever finishes last wins. Wait for it, then publish the built game on top.
+      # Setting Settings → Pages → Source to "GitHub Actions" removes that deploy entirely.
+      - name: Let any legacy branch deploy finish first
+        run: sleep 90
       - id: deployment
         uses: actions/deploy-pages@v4
