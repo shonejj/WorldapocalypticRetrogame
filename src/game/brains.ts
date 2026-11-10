@@ -1,7 +1,7 @@
 import { idle, type Actor, type Intent } from './actor';
 import { ReactiveSelector, Sequence, Condition, Action, Status, type Node } from '../ai/bt';
 import { Reasoner, curves } from '../ai/utility';
-import { WEAPONS } from './data';
+import { WEAPONS, type InfectedType } from './data';
 import type { InputFrame } from '../core/input';
 import type { Rng } from '../core/math';
 
@@ -15,6 +15,9 @@ export interface AIWorld {
   ammoFor(a: Actor): number;
   weaponsFree(): boolean;
   cry(z: Actor): void;
+  bounds(x: number): [number, number];
+  summon(by: Actor, types: InfectedType[]): void;
+  ram(z: Actor): void;
   groan(z: Actor): void;
 }
 export interface Brain { think(a: Actor, w: AIWorld, dt: number): Intent }
@@ -35,6 +38,16 @@ export class PlayerBrain implements Brain {
     if (f.aimX !== undefined && (it.fire || it.melee || f.moveX === 0) && Math.abs(f.aimX - a.x) > 0.35) it.faceX = Math.sign(f.aimX - a.x);
     if (f.aimDir) it.faceX = f.aimDir;
     if (f.pressed.has('throw')) it.throwAt = f.aimX !== undefined && Math.abs(f.aimX - a.x) > 2 ? Math.max(a.x - 12, Math.min(a.x + 12, f.aimX)) : a.x + a.facing * 9;
+    return it;
+  }
+}
+
+/** Safehouse: a survivor keeps to their spot and turns to whoever walks up. */
+export class StationBrain implements Brain {
+  constructor(private x: number) {}
+  think(a: Actor, w: AIWorld): Intent {
+    const it = idle(), dx = this.x - a.x;
+    if (Math.abs(dx) > 0.3) it.moveX = Math.sign(dx) * 0.7; else it.faceX = Math.sign(w.leader.x - a.x) || 1;
     return it;
   }
 }
@@ -164,6 +177,24 @@ export class InfectedBrain implements Brain {
     const dx = t.x - a.x;
     if (this.lostT > 5 && Math.abs(dx) > d.sight) { a.investigateX = t.x; a.state = 'investigate'; a.stateT = 0; return Status.Failure; }
     b.out.faceX = Math.sign(dx);
+    const boss = d.boss;
+    if (boss) {
+      // waves: at two-thirds and one-third health the boss stops, roars, and the room answers
+      if (boss.summon && a.waves < 2 && a.hp / a.maxHp < (a.waves === 0 ? 0.66 : 0.33)) { a.waves++; a.screamT = 1.4; a.stun = 1.4; a.chargeT = -1; b.w.cry(a); b.w.summon(a, boss.summon); return Status.Running; }
+      if (boss.charge) {
+        a.chargeCd -= b.dt;
+        if (a.chargeT >= 0) {
+          a.chargeT += b.dt; b.out.faceX = a.chargeDir;
+          if (a.chargeT < 0.9) return Status.Running;                     // wind-up: planted, roaring — the tell
+          b.out.moveX = a.chargeDir; b.out.run = true; b.out.boost = 3.4;
+          const [x0, x1] = b.w.bounds(a.x), wall = a.chargeDir > 0 ? a.x > x1 - 1 : a.x < x0 + 1;
+          const hit = b.w.squad.some((s) => s.alive && (s.x - a.x) * a.chargeDir > -0.4 && (s.x - a.x) * a.chargeDir < d.reach);
+          if (hit || wall || a.chargeT > 2.2) { if (hit || wall) b.w.ram(a); a.chargeT = -1; a.chargeCd = a.hp / a.maxHp < 0.4 ? 4 : 7; a.stun = 1.6; a.exposed = 1.6; }
+          return Status.Running;
+        }
+        if (a.chargeCd <= 0 && Math.abs(dx) > 3.5 && Math.abs(dx) < 13 && a.attackT < 0) { a.chargeT = 0; a.chargeDir = Math.sign(dx) || 1; a.screamT = 0.9; b.w.cry(a); return Status.Running; }
+      }
+    }
     if (d.gait === 'scream' && Math.abs(dx) > d.reach) {
       // screamer: plants itself and calls every host in earshot, again and again, until it is killed
       this.screamCd -= b.dt; a.screamT = Math.max(0, a.screamT - b.dt);

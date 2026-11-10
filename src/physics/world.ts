@@ -11,12 +11,16 @@ export interface Tag { kind: 'ground' | 'prop' | 'ragdoll' | 'lure'; material: '
 
 export function createWorld(x0: number, x1: number): planck.World {
   const w = new planck.World({ gravity: { x: 0, y: -22 }, allowSleep: true });
-  const g = w.createBody();
-  const tag: Tag = { kind: 'ground', material: 'concrete' };
-  const mask = CAT.PROP | CAT.RAGDOLL | CAT.DEBRIS | CAT.LURE;
-  g.createFixture(new planck.Edge({ x: x0 - 30, y: 0 }, { x: x1 + 30, y: 0 }), { friction: 0.85, filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
-  for (const x of [x0 - 0.3, x1 + 0.3]) g.createFixture(new planck.Edge({ x, y: 0 }, { x, y: 40 }), { filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
+
+  addGround(w, x0, x1, 30);
   return w;
+}
+/** A stretch of floor with end walls (the street, and every room). */
+export function addGround(w: planck.World, x0: number, x1: number, overhang = 0): void {
+  const g = w.createBody();
+  const tag: Tag = { kind: 'ground', material: 'concrete' }, mask = CAT.PROP | CAT.RAGDOLL | CAT.DEBRIS | CAT.LURE;
+  g.createFixture(new planck.Edge({ x: x0 - overhang, y: 0 }, { x: x1 + overhang, y: 0 }), { friction: 0.85, filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
+  for (const x of [x0 - 0.3, x1 + 0.3]) g.createFixture(new planck.Edge({ x, y: 0 }, { x, y: 40 }), { filterCategoryBits: CAT.GROUND, filterMaskBits: mask, userData: tag });
 }
 
 export interface Hit { tag: Tag; body: planck.Body; point: { x: number; y: number }; normal: { x: number; y: number }; fraction: number }

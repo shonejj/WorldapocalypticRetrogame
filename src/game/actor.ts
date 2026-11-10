@@ -9,6 +9,7 @@ import { clamp } from '../core/math';
 export interface Intent {
   moveX: number; run: boolean; crouch: boolean; aim: boolean; faceX?: number;
   fire: boolean; melee: boolean; reload: boolean; heal: boolean; throwAt?: number;
+  /** bosses: speed multiplier while charging */ boost?: number;
 }
 export const idle = (): Intent => ({ moveX: 0, run: false, crouch: false, aim: false, fire: false, melee: false, reload: false, heal: false });
 
@@ -30,7 +31,7 @@ export class Actor {
   readonly type?: InfectedType;
   readonly name: string;
   readonly scale: number;
-  levelId = '';
+  levelId = ''; isBoss = false;
 
   x: number; vx = 0; knock = 0; facing: 1 | -1 = 1;
   hp: number; maxHp: number; alive = true;
@@ -54,6 +55,7 @@ export class Actor {
       this.hp = this.maxHp = s.maxHp; this.weapon = s.weapon; this.mag = WEAPONS[s.weapon].mag;
     } else {
       const t = o.infected ?? 'common', d = INFECTED[t];
+      this.isBoss = !!d.boss;
       this.team = 'infected'; this.infected = d; this.type = t; this.name = d.name;
       this.scale = d.scale * (0.96 + Math.random() * 0.08); this.hp = this.maxHp = d.hp; this.weapon = 'pipe';
     }
@@ -63,12 +65,15 @@ export class Actor {
   get height() { return (this.state === 'dormant' && this.team === 'infected' ? 0.7 : this.crouching ? 1.2 : 1.8 * (this.infected?.height ?? 1)) * this.scale; }
   /** screamer: time left of the current scream (drives its animation) */
   screamT = 0;
+  /** bosses (owned by the brain): charge wind-up / run timers, cooldown, summon waves already called, damage multiplier while exposed */
+  chargeT = -1; chargeCd = 3; chargeDir = 0; waves = 0; exposed = 0;
   get busy() { return this.reloadT >= 0 || this.meleeT >= 0 || this.healT >= 0 || this.throwT >= 0 || this.stun > 0 || this.drawT >= 0; }
   /** 0..1 how "aimed" the survivor is (animation blend + accuracy). */
   get aimed() { return this.team === 'squad' && this.drawn && this.reloadT < 0 && this.healT < 0 && this.aimT > 0; }
 
   damage(amount: number, dir: number, knock: number): void {
     if (!this.alive) return;
+    if (this.exposed > 0) amount *= 1.6;
     this.hp -= amount; this.hurtT = 1;
     const poise = this.infected?.poise ?? 1;
     this.knock += dir * knock * poise * 0.6;
@@ -82,7 +87,7 @@ export class Actor {
     this.time += dt;
     this.cooldown = Math.max(0, this.cooldown - dt); this.attackCd = Math.max(0, this.attackCd - dt);
     this.aimT = Math.max(0, this.aimT - dt); this.recoil = Math.max(0, this.recoil - dt * 7);
-    this.hurtT = Math.max(0, this.hurtT - dt * 3); this.stun = Math.max(0, this.stun - dt);
+    this.hurtT = Math.max(0, this.hurtT - dt * 3); this.stun = Math.max(0, this.stun - dt); this.exposed = Math.max(0, this.exposed - dt);
     const dormant = this.team === 'infected' && (this.state === 'dormant' || this.state === 'waking');
 
     // ---- movement (accelerate toward target speed; knockback decays)
@@ -93,7 +98,7 @@ export class Actor {
     if (this.reloadT >= 0) speed *= 0.55;
     if (this.meleeT >= 0 || this.attackT >= 0 || this.throwT >= 0) speed *= 0.25;
     if (this.healT >= 0 || this.stun > 0 || dormant) speed = 0;
-    const target = clamp(it.moveX, -1, 1) * speed;
+    const target = clamp(it.moveX, -1, 1) * speed * (it.boost ?? 1);
     this.vx += (target - this.vx) * Math.min(1, (Math.abs(target) > Math.abs(this.vx) ? 10 : 14) * dt);
     this.knock *= Math.exp(-7 * dt);
     this.x = clamp(this.x + (this.vx + this.knock) * dt, x0 + 0.4, x1 - 0.4);

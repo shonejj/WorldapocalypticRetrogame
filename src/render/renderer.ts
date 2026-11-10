@@ -37,20 +37,31 @@ const DofShader = {
     }`,
 };
 
-/** Colour grade + vignette + grain + damage tint, applied before OutputPass (linear space). */
+/**
+ * Colour grade, applied before OutputPass (linear space): split-tone (shadow / highlight tints per
+ * mood), saturation, a fog-coloured lift so blacks never go dead, vignette, damage tint, and an
+ * ordered-dither posterise that turns smooth gradients into pixel-art colour bands. No film grain:
+ * at 360 art rows per-pixel noise reads as dirt, not texture.
+ */
 const GradeShader = {
-  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uHurt: { value: 0 }, uVignette: { value: 0.5 }, uGrain: { value: 0.035 } },
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uHurt: { value: 0 }, uVignette: { value: 0.5 }, uShadow: { value: new THREE.Vector3(0.86, 1, 1.12) }, uHigh: { value: new THREE.Vector3(1.1, 1, 0.86) },
+    uSat: { value: 1 }, uLift: { value: new THREE.Color(0) }, uBands: { value: 34 }, uRes: { value: new THREE.Vector2(640, 360) }, uFade: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime; uniform float uHurt; uniform float uVignette; uniform float uGrain; varying vec2 vUv;
-    float hash(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233))) * 43758.5453); }
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uHurt; uniform float uVignette; uniform vec3 uShadow; uniform vec3 uHigh; uniform float uSat; uniform vec3 uLift; uniform float uBands; uniform vec2 uRes; uniform float uFade; varying vec2 vUv;
+    float bayer(vec2 p){ vec2 q = floor(mod(p, 4.0)); float i = q.x + q.y * 4.0;
+      float m = i < 1.0 ? 0.0 : i < 2.0 ? 8.0 : i < 3.0 ? 2.0 : i < 4.0 ? 10.0 : i < 5.0 ? 12.0 : i < 6.0 ? 4.0 : i < 7.0 ? 14.0 : i < 8.0 ? 6.0 : i < 9.0 ? 3.0 : i < 10.0 ? 11.0 : i < 11.0 ? 1.0 : i < 12.0 ? 9.0 : i < 13.0 ? 15.0 : i < 14.0 ? 7.0 : i < 15.0 ? 13.0 : 5.0;
+      return (m / 16.0 - 0.47) * 0.7; }
     void main(){
       vec4 c = texture2D(tDiffuse, vUv);
       float l = dot(c.rgb, vec3(0.2126,0.7152,0.0722));
-      c.rgb *= mix(vec3(0.86,1.0,1.12), vec3(1.1,1.0,0.86), smoothstep(0.02, 0.6, l));   // teal shadows / amber highlights
+      c.rgb = mix(vec3(l), c.rgb, uSat);
+      c.rgb *= mix(uShadow, uHigh, smoothstep(0.02, 0.6, l));
+      c.rgb += uLift * (1.0 - smoothstep(0.0, 0.35, l));
       vec2 d = vUv - 0.5; float vig = smoothstep(0.85, 0.25, length(d * vec2(1.3, 1.0)));
       c.rgb *= mix(1.0, vig, uVignette);
       c.rgb = mix(c.rgb, c.rgb * vec3(1.8,0.35,0.3), uHurt * (1.0 - vig * 0.6));
-      c.rgb += (hash(vUv * 1000.0 + uTime) - 0.5) * uGrain * (0.4 + l);
+      if (uBands > 0.0) { vec3 g = sqrt(max(c.rgb, 0.0)); g = floor(g * uBands + 0.5 + bayer(vUv * uRes)) / uBands; c.rgb = g * g; }
+      c.rgb *= 1.0 - uFade;
       gl_FragColor = c;
     }`,
 };
@@ -168,6 +179,7 @@ export class Renderer {
     const u = this.dof.uniforms, rb = this.composer.readBuffer;
     u.tDepth.value = rb.depthTexture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
     u.uFocus.value = this.iso ? this.camera.position.distanceTo(this.iso) : this.camera.position.z; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
+    this.grade.uniforms.uRes.value.set(rb.width, rb.height); this.grade.uniforms.uBands.value = this.quality.pixel === 0 ? 0 : 34;
     this.composer.render();
   }
 

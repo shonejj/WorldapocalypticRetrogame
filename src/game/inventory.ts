@@ -6,7 +6,7 @@ import { CARRY_LIMIT, ITEMS, RECIPES, type ItemId, type Recipe, type Role } from
  */
 export class Stash {
   readonly items = new Map<ItemId, number>();
-  constructor(init: Partial<Record<ItemId, number>> = {}, readonly limit = CARRY_LIMIT) { for (const [k, v] of Object.entries(init)) if (v) this.items.set(k as ItemId, v); }
+  constructor(init: Partial<Record<ItemId, number>> = {}, public limit = CARRY_LIMIT) { for (const [k, v] of Object.entries(init)) if (v) this.items.set(k as ItemId, v); }
   count(id: ItemId): number { return this.items.get(id) ?? 0; }
   get weight(): number { let w = 0; for (const [k, v] of this.items) w += ITEMS[k].weight * v; return Math.round(w * 100) / 100; }
   /** How many of `id` fit (stack + weight). */

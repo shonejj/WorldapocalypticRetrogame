@@ -395,6 +395,8 @@ export class SkinnedView {
     this.shadow.scale.set(2.2, 1, 0.5);
   }
 
+  /** World position of the head (portraits, speech markers). */
+  head(): THREE.Vector3 { this.root.updateMatrixWorld(true); return this.b(BN.head).getWorldPosition(new THREE.Vector3()); }
   flash(v: number): void { for (const m of this.mats) m.emissive.setRGB(v * 0.55, v * 0.06, v * 0.04); }
   setOpacity(o: number): void { for (const m of this.mats) { m.transparent = o < 1; m.opacity = o; } }
   muzzle(): THREE.Vector3 | null {

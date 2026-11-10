@@ -33,7 +33,7 @@ const host: Host = { fire() {}, meleeHit() {}, clawHit() {}, footstep() {}, ammo
 function scene(survivorX: number, crouch = false, light = 0.1) {
   const s = new Actor({ x: survivorX, survivor: 'reed' }), z = new Actor({ x: 10, infected: 'common' });
   z.facing = -1; z.state = 'idle';
-  const w = { squad: [s], infected: [z], leader: s, time: 0, rng: new Rng(1), x0: 0, x1: 100, hold: { on: false, x: 0 }, slot: () => 0, lightAt: () => light, medical: () => 0, ammoFor: () => 0, weaponsFree: () => false, cry() {}, groan() {} } as AIWorld;
+  const w = { squad: [s], infected: [z], leader: s, time: 0, rng: new Rng(1), x0: 0, x1: 100, hold: { on: false, x: 0 }, slot: () => 0, lightAt: () => light, medical: () => 0, ammoFor: () => 0, weaponsFree: () => false, cry() {}, groan() {}, bounds: () => [0, 100] as [number, number], summon() {}, ram() {} } as AIWorld;
   const brain = new InfectedBrain();
   const run = (sec: number) => { for (let t = 0; t < sec; t += 1 / 60) { const it = idle(); it.crouch = crouch; s.step(1 / 60, it, host, 0, 100); w.time += 1 / 60; z.step(1 / 60, brain.think(z, w, 1 / 60), host, 0, 100); } };
   return { z, brain, run };
