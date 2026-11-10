@@ -4,7 +4,8 @@ import type { LevelDef } from './levels/types';
 import type { LightSpot } from '../art/kit';
 import { building, relay } from '../art/buildings';
 import { ground, streetLamp, powerLine, chainFence, billboard, overpass, skyline, sky, Z } from '../art/street';
-import { backdrop, foreground } from '../art/backdrop';
+import { backdrop, foreground, type Backdrop } from '../art/backdrop';
+import { roadBackdrop, facilityBackdrop } from '../art/sets';
 import { asset } from '../art/assets';
 import { FACADE_Z } from '../art/buildings';
 import { prop, type Prop } from '../art/props';
@@ -21,12 +22,16 @@ export interface BuiltWorld { group: THREE.Group; lights: LightSpot[]; props: Pr
 export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World): BuiltWorld {
   const g = new THREE.Group(), lights: LightSpot[] = [], R = new Rng(L.seed);
   const add = (o: { group: THREE.Object3D; lights?: LightSpot[]; light?: LightSpot }) => { g.add(o.group); if (o.lights) lights.push(...o.lights); if (o.light) lights.push(o.light); };
-  g.add(sky()); g.add(skyline(L.x0 - 60, L.x1 + 60)); g.add(ground(L.x0 - 60, L.x1 + 60));
-  const far = backdrop(L.x0, L.x1, L.seed); g.add(far.group);
+  g.add(sky()); g.add(ground(L.x0 - 60, L.x1 + 60));
+  let far: Backdrop = { group: new THREE.Group(), blinkers: [] };
+  if (L.set === 'city') { g.add(skyline(L.x0 - 60, L.x1 + 60)); far = backdrop(L.x0, L.x1, L.seed); }
+  else if (L.set === 'road') far = roadBackdrop(L.x0, L.x1, L.seed);
+  else if (L.set === 'facility') far = facilityBackdrop(L.x0, L.x1, L.seed, L.x1 - 14);
+  g.add(far.group);
   for (const b of L.buildings) add(building({ ...b, seed: hashString(`${L.id}${b.x}`) }));
-  const rl = relay(L.relayX); add(rl);
-  add(overpass(L.overpass[0], L.overpass[1]));
-  if (L.billboard) add(billboard(L.billboard.x, -9.5, L.billboard.text));
+  const rl = L.relayX !== undefined ? relay(L.relayX) : null; if (rl) add(rl);
+  if (L.overpass) add(overpass(L.overpass[0], L.overpass[1]));
+  for (const b of L.billboards ?? []) add(billboard(b.x, -9.5, b.text));
   g.add(powerLine(L.poles));
   // chain-link fences close every gap between buildings on the facade line (the view goes through them)
   for (const [a, b] of L.fences) g.add(chainFence(a, b, FACADE_Z + 0.05));
@@ -36,13 +41,13 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
   // dark foreground overgrowth along the near road edge: frames the bottom of the screen (reference composition)
   g.add(foreground(L.x0, L.x1, L.seed));
   // tarp-covered cars abandoned in the lots behind the fences (CC0 scan)
-  for (let x = L.x0 + 9; x < L.x1; x += R.range(24, 40)) { const c = asset('covered_car', 4.3, 'length'); if (c) { c.position.set(x, 0, R.range(-7.5, -10)); c.rotation.y = R.range(-0.3, 0.3); g.add(c); } }
+  if (L.set !== 'none') for (let x = L.x0 + 9; x < L.x1; x += R.range(24, 40)) { const c = asset('covered_car', 4.3, 'length'); if (c) { c.position.set(x, 0, R.range(-7.5, -10)); c.rotation.y = R.range(-0.3, 0.3); g.add(c); } }
   // manhole covers (Game puffs steam from them every 23 m)
   const mh = new Batch(); for (let x = Math.ceil((L.x0 - 20) / 23) * 23; x < L.x1 + 20; x += 23) mh.add(M.metal('#2c3134'), cyl(0.42, 0.42, 0.04, x + 0.3, -0.13, 3.2, 16)); g.add(mh.build({ castShadow: false }));
   g.add(grass([[L.x0 - 20, L.x1 + 20, FACADE_Z, FACADE_Z + 0.6, 0], [L.x0 - 20, L.x1 + 20, 1.0, 1.9, -0.12], [L.x0 - 20, L.x1 + 20, 6, 8.5, -0.16], [L.x0 - 20, L.x1 + 20, -11, FACADE_Z - 0.2, 0]], 0.9, L.seed));
 
   // workbench in front of the garage
-  const wb = new Batch(); const wx = L.workbench.x;
+  const wb = new Batch(); const wx = L.workbench?.x ?? -9999;
   wb.add(M.wood('#5a3e28'), box(1.8, 0.08, 0.8, wx, 0.92, -1.6), ...[[-0.8, -0.3], [0.8, -0.3], [-0.8, 0.3], [0.8, 0.3]].map(([dx, dz]) => box(0.08, 0.9, 0.08, wx + dx, 0.45, -1.6 + dz)));
   wb.add(M.metal('#4a5052'), box(0.5, 0.2, 0.3, wx - 0.5, 1.06, -1.7), cyl(0.06, 0.06, 0.4, wx + 0.4, 1.1, -1.5, 8));
   wb.add(M.emissive(0xffc27a, 2.5), box(0.12, 0.25, 0.12, wx + 0.6, 1.08, -1.75));
@@ -74,5 +79,5 @@ export function buildWorld(L: LevelDef, scene: THREE.Scene, world: planck.World)
     props.push({ body, mesh: pr.group, z, material: pr.material, half: pr.half });
   }
   scene.add(g);
-  return { group: g, lights, props, beacon: rl.group.getObjectByName('beacon') ?? null, workbench, blinkers: far.blinkers };
+  return { group: g, lights, props, beacon: rl?.group.getObjectByName('beacon') ?? null, workbench, blinkers: far.blinkers };
 }

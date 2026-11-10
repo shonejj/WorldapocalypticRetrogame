@@ -1,9 +1,11 @@
-import { animate, createTimer } from 'animejs';
+import { animate, createTimer, stagger } from 'animejs';
 import { h } from './dom';
 import { menu, panel, type ScreenStack } from './screens';
 import { GAME } from '../config/game';
 import { ACTIONS, ACTION_LABEL, type Input } from '../core/input';
-import { ITEMS, RECIPES, SURVIVORS, WEAPONS, type ItemId, type Role } from '../game/data';
+import { ITEMS, RECIPES, SURVIVORS, WEAPONS, UPGRADES, NOTES, type ItemId, type Role, type UpgradeId, type NoteId } from '../game/data';
+import { panel as painting } from '../art/panels';
+import { portrait } from '../art/portraits';
 import type { Game } from '../game/game';
 import type { Settings } from './settings';
 import { audio } from '../core/audio';
@@ -11,13 +13,17 @@ import { audio } from '../core/audio';
 export const footText = (offline: boolean) => `v${GAME.version} · ${offline ? 'OFFLINE READY — PLAYABLE WITHOUT INTERNET' : 'CACHING FOR OFFLINE PLAY…'} · MIT`;
 
 /** Title screen with a live radio waveform that "locks on" to the signal. */
-export function titleScreen(S: ScreenStack, o: { canContinue: boolean; offline: boolean; onContinue: () => void; onNew: () => void; onSettings: () => void; onControls: () => void; onSquad: () => void }): void {
+export function titleScreen(S: ScreenStack, o: { canContinue: boolean; continueLabel: string; endings: number; offline: boolean; onContinue: () => void; onNew: () => void; onSettings: () => void; onControls: () => void; onSquad: () => void }): void {
   const wave = h<'canvas'>('canvas.wave');
   const words = GAME.title.toUpperCase().split(' '), half = Math.ceil(words.length / 2);
   const title = h('h1', {}, words.slice(0, half).join(' '), h('br'), words.slice(half).join(' '));
-  const el = h('div.screen.title', {}, wave, title, h('div.sub', {}, GAME.tagline.toUpperCase()),
-    menu([['Continue', o.onContinue, !o.canContinue], ['New expedition', o.onNew], ['The squad', o.onSquad], ['Settings', o.onSettings], ['Controls', o.onControls]]),
+  // the painted road into the fog behind the menu, drifting slowly (same panel art as the cutscenes)
+  const art = h<'canvas'>('canvas.titleart'); const src = painting('four_walk'); art.width = src.width; art.height = src.height; art.getContext('2d')!.drawImage(src, 0, 0);
+  const el = h('div.screen.title', {}, art, h('div.titleshade'), h('div.titlecol', {}, wave, title, h('div.sub', {}, GAME.tagline.toUpperCase()),
+    menu([[o.canContinue ? o.continueLabel : 'Continue', o.onContinue, !o.canContinue], ['New game', o.onNew], ['The squad', o.onSquad], ['Settings', o.onSettings], ['Controls', o.onControls]]),
+    h('div.endings', {}, o.endings ? `ENDINGS FOUND ${o.endings} / 3` : '')),
     h('div#netfoot.foot', {}, footText(o.offline)));
+  const drift = animate(art, { scale: [1.08, 1.16], x: ['-1.5%', '1.5%'], duration: 40000, ease: 'inOutSine', loop: true, alternate: true });
   const g = wave.getContext('2d')!;
   const timer = createTimer({ loop: true, duration: 1000, onUpdate: () => {
     const t = performance.now(), dpr = Math.min(2, devicePixelRatio || 1), w = (wave.width = wave.clientWidth * dpr), hh = (wave.height = wave.clientHeight * dpr);
@@ -33,7 +39,7 @@ export function titleScreen(S: ScreenStack, o: { canContinue: boolean; offline: 
       g.stroke();
     }
   } });
-  S.push({ el, onBack: () => {}, onClose: () => timer.revert() });
+  S.push({ el, onBack: () => {}, onClose: () => { timer.revert(); drift.revert(); } });
   animate(title, { opacity: [0, 1], letterSpacing: ['0.45em', '0.06em'], duration: 1600, ease: 'outExpo' });
 }
 
@@ -94,13 +100,13 @@ export function controlsScreen(S: ScreenStack, input: Input): void {
 
 export function squadBio(S: ScreenStack): void {
   const c = panel('THE SQUAD');
-  for (const s of SURVIVORS) c.append(h('div.bio', {}, h('b', {}, `${s.name} — ${s.roleLabel}`), h('div', {}, `${WEAPONS[s.weapon].name} · ${s.resistant ? 'resistant to the organism' : 'never exposed'}`), h('p', {}, s.bio), h('div.trait', {}, s.trait)));
+  for (const s of SURVIVORS) c.append(h('div.bio', {}, portrait(s.name.toUpperCase()) ? h('img.bioface', { src: portrait(s.name.toUpperCase())! }) : null, h('b', {}, `${s.name} — ${s.roleLabel}`), h('div', {}, `${WEAPONS[s.weapon].name} · ${s.resistant ? 'resistant to the organism' : 'never exposed'}`), h('p', {}, s.bio), h('div.trait', {}, s.trait)));
   c.append(menu([['Back', () => S.pop()]]));
   S.push({ el: h('div.screen.dim', {}, c) });
 }
 
 /** Inventory: per-survivor needs (eat/drink), stash with weights, crafting (also opened at the workbench). */
-export function inventoryScreen(S: ScreenStack, g: Game, opts: { atBench: boolean; onClose: () => void }): void {
+export function inventoryScreen(S: ScreenStack, g: Game, opts: { atBench: boolean; onClose: () => void; onNote?: (id: NoteId) => void }): void {
   const wrap = h('div.inventory');
   const render = () => {
     const roles = g.squad.filter((s) => s.alive).map((s) => s.survivor!.role) as Role[];
@@ -116,33 +122,25 @@ export function inventoryScreen(S: ScreenStack, g: Game, opts: { atBench: boolea
       return h('div.recipe', {}, h('div', {}, h('b', {}, r.name), h('div.need', {}, need + (r.requires ? ` · ${r.requires}` : ''))),
         h('button', { onclick: () => { if (g.craft(r.id)) render(); else audio.play('dryfire'); }, disabled: !can.ok, title: can.why ?? '' }, can.ok ? 'Craft' : can.why ?? '—'));
     }), !opts.atBench ? h('p.hint', {}, 'Some recipes need the garage workbench.') : null);
-    wrap.replaceChildren(people, items, craft);
+    const upg = opts.atBench ? h('div.col', {}, h('h3', {}, `UPGRADES · ${g.stash.count('scrap')} SCRAP`), ...(Object.keys(UPGRADES) as UpgradeId[]).map((id) => {
+      const u = UPGRADES[id], lv = g.upg[id] ?? 0, cost = g.upgradeCost(id);
+      return h('div.recipe', {}, h('div', {}, h('b', {}, u.name, h('span.pips', {}, ' ' + '●'.repeat(lv) + '○'.repeat(u.cost.length - lv))), h('div.need', {}, u.desc)),
+        h('button', { onclick: () => { if (g.buyUpgrade(id)) render(); else audio.play('dryfire'); }, disabled: cost === null || g.stash.count('scrap') < cost }, cost === null ? 'MAX' : `${cost} scrap`));
+    })) : h('div.col', {}, h('h3', {}, `NOTES · ${g.notes.size}`), ...[...g.notes].map((id) => h('button.notelink', { onclick: () => opts.onNote?.(id) }, NOTES[id].title + (NOTES[id].research ? ' ◆' : ''))), g.notes.size ? null : h('p.hint', {}, 'Documents you find are kept here.'));
+    wrap.replaceChildren(people, items, craft, upg);
   };
   render();
-  S.push({ el: h('div.screen.dim', {}, panel(opts.atBench ? 'WORKBENCH & SUPPLIES' : 'SQUAD & SUPPLIES', wrap, menu([['Close', () => { S.pop(); }]]))), onClose: opts.onClose });
-}
-
-/** Dialogue choices (Ink). Lines play as subtitles; this only appears when a choice is needed. */
-export function choiceScreen(S: ScreenStack, choices: string[], pick: (i: number) => void): void {
-  S.push({ el: h('div.screen.choices', {}, h('div.choicebox', {}, ...choices.map((c, i) => h('button', { onclick: () => { audio.play('uiSelect'); S.pop(); pick(i); } }, c)))), onBack: () => {}, modal: true });
+  S.push({ el: h('div.screen.dim', {}, panel(opts.atBench ? 'WORKBENCH — CRAFT & UPGRADE' : 'SQUAD & SUPPLIES', wrap, menu([['Close', () => { S.pop(); }]]))), onClose: opts.onClose });
 }
 
 export function endScreen(S: ScreenStack, title: string, sub: string, body: string, items: [string, () => void][]): void {
   S.push({ el: h('div.screen.dim', {}, h('h1.small', {}, title), h('div.sub', {}, sub), body ? h('p.endtext', {}, body) : null, menu(items)), onBack: () => {} });
 }
 
-/** Opening: the broadcast that starts the story (skippable). Calls `done` once. */
-export function introScreen(S: ScreenStack, chapter: string, done: () => void): void {
-  const lines = ['…static…', 'PROTOCOL LIGHTHOUSE.', 'Resistant carriers, report to the coordinates.', 'This message repeats.'];
-  const text = h('div.introline'), card = h('div.introcard.hidden', {}, chapter);
-  let i = 0, over = false;
-  const finish = () => { if (over) return; over = true; clearInterval(timer); S.pop(); done(); };
-  const el = h('div.screen.intro', { onclick: finish }, text, card, h('div.skip', {}, 'Tap or press any key to skip'));
-  const timer = setInterval(() => {
-    if (i < lines.length) { text.textContent = lines[i++]; animate(text, { opacity: [0, 1], duration: 500 }); if (i === 1) audio.play('radioStatic'); }
-    else if (card.classList.contains('hidden')) { text.textContent = ''; card.classList.remove('hidden'); animate(card, { opacity: [0, 1], scale: [1.06, 1], duration: 900, ease: 'outQuad' }); }
-    else finish();
-  }, 1700);
-  S.push({ el, onBack: finish, modal: true });
-  addEventListener('keydown', function k() { removeEventListener('keydown', k); finish(); }, { once: true });
+/** Chapter results: what the squad did, before the story moves on. */
+export function resultsScreen(S: ScreenStack, o: { number: string; name: string; rows: [string, string][]; next: string; onNext: () => void }): void {
+  const el = h('div.screen.dim.results', {}, h('div.sub', {}, o.number), h('h1.small', {}, o.name.toUpperCase()), h('div.sub', {}, 'COMPLETE'),
+    h('div.rows', {}, ...o.rows.flatMap(([k, v]) => [h('span', {}, k), h('b', {}, v)])), menu([[o.next, o.onNext]]));
+  S.push({ el, onBack: () => {}, modal: true });
+  animate(el.querySelectorAll('.rows > *'), { opacity: [0, 1], x: [-10, 0], delay: stagger(60, { start: 300 }), duration: 300, ease: 'outQuad' });
 }

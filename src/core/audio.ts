@@ -5,11 +5,30 @@
  * pitch/gain variation and stereo position from world x. Music is adaptive: three layers
  * (drone / tension / combat) crossfaded by an intensity value, scheduled on a beat clock.
  */
+/** Musical identity of a place (see setTheme). */
+export type ThemeId = 'title' | 'street' | 'road' | 'lab' | 'camp' | 'ending' | 'silence';
 export type Bus = 'music' | 'ambience' | 'sfx' | 'ui' | 'voice';
 export type Sfx =
   | 'rifle' | 'pistol' | 'shotgun' | 'dryfire' | 'reload' | 'melee' | 'hitFlesh' | 'hitMetal' | 'hitWood' | 'hitConcrete'
   | 'step' | 'stepWet' | 'groan' | 'shriek' | 'bruteRoar' | 'hurt' | 'death' | 'pickup' | 'craft' | 'search' | 'heal'
   | 'throw' | 'glassBreak' | 'uiMove' | 'uiSelect' | 'uiBack' | 'alert' | 'radioStatic' | 'thunder' | 'door' | 'casing';
+
+/**
+ * Themes (audio-design: adaptive music by re-sequencing). A theme is a chord loop with a pad and a
+ * plucked figure, generated on the same lookahead clock as the tension/combat layers. It gives each
+ * place a melody of its own, and it thins out as danger rises so the dread layers take over.
+ * notes are MIDI; pattern entries index into the chord (−1 = rest), one entry per eighth note.
+ */
+interface Theme { bpm: number; chords: number[][]; pattern: number[]; chance: number; octave: number; decay: number; pluck: number; pad: number; padWave: OscillatorType; drone: number; wind: number; events: 'street' | 'fire' | 'none' }
+const THEMES: Record<Exclude<ThemeId, 'silence'>, Theme> = {
+  title: { bpm: 54, chords: [[45, 57, 60, 64], [41, 53, 57, 60], [48, 55, 60, 64], [43, 55, 59, 62]], pattern: [0, -1, 2, -1, 3, -1, 2, 1], chance: 0.9, octave: 12, decay: 2.2, pluck: 0.07, pad: 0.03, padWave: 'triangle', drone: 0.35, wind: 0.2, events: 'none' },
+  street: { bpm: 48, chords: [[45, 52, 57, 60], [45, 52, 57, 60], [41, 48, 52, 57], [40, 47, 52, 56]], pattern: [0, -1, -1, -1, 3, -1, 2, -1], chance: 0.55, octave: 12, decay: 2.6, pluck: 0.045, pad: 0.018, padWave: 'sine', drone: 1, wind: 0.22, events: 'street' },
+  road: { bpm: 46, chords: [[50, 57, 60, 64], [46, 53, 58, 62], [41, 48, 53, 57], [48, 55, 60, 62]], pattern: [-1, 2, -1, 3, -1, 1, -1, -1], chance: 0.7, octave: 12, decay: 3.2, pluck: 0.05, pad: 0.03, padWave: 'sine', drone: 0.55, wind: 0.5, events: 'street' },
+  lab: { bpm: 42, chords: [[45, 51, 57, 63], [44, 50, 56, 62], [45, 51, 57, 63], [46, 52, 58, 61]], pattern: [0, -1, -1, 3, -1, -1, -1, 2], chance: 0.5, octave: 24, decay: 3.5, pluck: 0.03, pad: 0.016, padWave: 'sine', drone: 1, wind: 0.08, events: 'street' },
+  camp: { bpm: 63, chords: [[41, 53, 57, 60, 64], [45, 57, 60, 64, 67], [38, 50, 57, 60, 65], [36, 48, 55, 59, 64]], pattern: [1, 2, 3, 4, 3, 2, 3, -1], chance: 0.92, octave: 0, decay: 1.5, pluck: 0.075, pad: 0.035, padWave: 'triangle', drone: 0.12, wind: 0.1, events: 'fire' },
+  ending: { bpm: 58, chords: [[36, 48, 55, 60, 64], [43, 47, 55, 59, 62], [45, 52, 57, 60, 64], [41, 48, 53, 57, 60]], pattern: [1, 3, 2, 3, 4, 3, 2, 3], chance: 1, octave: 12, decay: 2.4, pluck: 0.075, pad: 0.04, padWave: 'triangle', drone: 0.1, wind: 0.12, events: 'none' },
+};
+const mtof = (m: number) => 440 * Math.pow(2, (m - 69) / 12);
 
 export const dbToGain = (db: number) => Math.pow(10, db / 20);
 export const sliderToDb = (v: number) => (v <= 0.0001 ? -80 : 20 * Math.log10(v * v));
@@ -22,7 +41,8 @@ export class AudioEngine {
   private intensity = 0;          // 0 calm … 1 combat
   private layers: { drone: GainNode; tension: GainNode; combat: GainNode } | null = null;
   private nextBeat = 0; private beat = 0;
-  private rainGain: GainNode | null = null;
+  private rainGain: GainNode | null = null; private windGain: GainNode | null = null; private rainOn = false;
+  private theme: Theme | null = null; private themeId: ThemeId = 'silence'; private themeBus: GainNode | null = null; private themeNext = 0; private themeStep = 0; private boss = false;
   volumes: Record<Bus | 'master', number> = { master: 0.85, music: 0.6, ambience: 0.75, sfx: 0.9, ui: 0.7, voice: 0.9 };
 
   unlock(): void {
@@ -53,7 +73,15 @@ export class AudioEngine {
     if (!this.ctx) return;
     this.bus.duck.gain.setTargetAtTime(on ? dbToGain(-11) : 1, this.ctx.currentTime, on ? 0.03 : 0.35);
   }
-  setRain(on: boolean): void { if (this.ctx && this.rainGain) this.rainGain.gain.setTargetAtTime(on ? 0.17 : 0, this.ctx.currentTime, 1); }
+  setRain(on: boolean): void { this.rainOn = on; if (this.ctx && this.rainGain) this.rainGain.gain.setTargetAtTime(on ? 0.17 : 0, this.ctx.currentTime, 1); }
+  /** Switch the place's music (title, street, road, lab, safehouse, ending). Safe before unlock: applied once audio starts. */
+  setTheme(id: ThemeId): void {
+    if (id === this.themeId) return;
+    this.themeId = id; this.theme = id === 'silence' ? null : THEMES[id]; this.themeStep = 0;
+    if (this.ctx) { this.themeNext = this.ctx.currentTime + 0.6; this.windGain?.gain.setTargetAtTime(this.theme?.wind ?? 0.15, this.ctx.currentTime, 2); }
+  }
+  /** Boss fight: a driving bass figure joins the combat layer. */
+  setBoss(on: boolean): void { this.boss = on; }
   /** Adaptive music driver: 0 calm, ~0.5 suspicion, 1 combat. */
   setIntensity(v: number): void { this.intensity = Math.max(0, Math.min(1, v)); }
 
@@ -63,12 +91,12 @@ export class AudioEngine {
 
   private startAmbience(): void {
     const ctx = this.ctx!, amb = this.bus.ambience;
-    const rain = ctx.createGain(); rain.gain.value = 0.17; rain.connect(amb); this.rainGain = rain;   // rain sits under everything (was too loud)
+    const rain = ctx.createGain(); rain.gain.value = this.rainOn ? 0.17 : 0; rain.connect(amb); this.rainGain = rain;   // rain sits under everything (was too loud)
     const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2600; bp.Q.value = 0.35; bp.connect(rain);
     this.noise(bp, true).start();
     const hiss = ctx.createBiquadFilter(); hiss.type = 'highpass'; hiss.frequency.value = 6000; const hg = ctx.createGain(); hg.gain.value = 0.07; hiss.connect(hg); hg.connect(rain);
     this.noise(hiss, true, 1.3).start();
-    const wind = ctx.createGain(); wind.gain.value = 0.22; wind.connect(amb);
+    const wind = ctx.createGain(); wind.gain.value = this.theme?.wind ?? 0.22; wind.connect(amb); this.windGain = wind;
     const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 300; lp.connect(wind);
     const lfo = ctx.createOscillator(); lfo.frequency.value = 0.06; const lg = ctx.createGain(); lg.gain.value = 180; lfo.connect(lg); lg.connect(lp.frequency); lfo.start();
     this.noise(lp, true, 0.6).start();
@@ -98,6 +126,32 @@ export class AudioEngine {
     const tf = ctx.createBiquadFilter(); tf.type = 'bandpass'; tf.frequency.value = 4800; tf.Q.value = 6;
     const tg = ctx.createGain(); tg.gain.value = 0.05; tf.connect(tg); tg.connect(this.layers.tension); this.noise(tf, true, 0.7).start();
     this.nextBeat = ctx.currentTime + 0.1;
+    // theme bus: dry + a feedback delay with a dark tail (cheap room) so plucks ring out like a piano in an empty hall
+    const tb = ctx.createGain(); tb.gain.value = 1; tb.connect(m); this.themeBus = tb;
+    const dl = ctx.createDelay(1); dl.delayTime.value = 0.36; const fb = ctx.createGain(); fb.gain.value = 0.42; const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; const wet = ctx.createGain(); wet.gain.value = 0.5;
+    tb.connect(dl); dl.connect(lp); lp.connect(fb); fb.connect(dl); lp.connect(wet); wet.connect(m);
+    this.themeNext = ctx.currentTime + 0.4;
+  }
+  /** One eighth-note of the current theme. */
+  private themeTick(t: number): void {
+    const th = this.theme, bus = this.themeBus; if (!th || !bus) return;
+    const ctx = this.ctx!, step = this.themeStep++, chord = th.chords[Math.floor(step / 8) % th.chords.length], k = step % 8, spb = 60 / th.bpm;
+    const calm = 1 - Math.min(1, this.intensity * 1.3) * 0.85;
+    if (k === 0) for (const n of chord.slice(0, 4)) {                                   // pad: one soft swell per bar
+      const o = ctx.createOscillator(), g = ctx.createGain(), len = spb * 4;
+      o.type = th.padWave; o.frequency.value = mtof(n); o.detune.value = (Math.random() - 0.5) * 10;
+      g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(th.pad * calm, t + len * 0.35); g.gain.linearRampToValueAtTime(0.0001, t + len * 1.15);
+      o.connect(g); g.connect(bus); o.start(t); o.stop(t + len * 1.2);
+    }
+    const idx = th.pattern[k];
+    if (idx < 0 || Math.random() > th.chance) return;
+    const f = mtof(chord[Math.min(idx, chord.length - 1)] + th.octave), peak = th.pluck * calm * (k === 0 ? 1 : 0.8);
+    for (const [mul, type, lv] of [[1, 'triangle', 1], [2, 'sine', 0.35], [3.01, 'sine', 0.12]] as const) {   // pluck: fundamental + two soft partials, fast attack, long fall
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = type; o.frequency.value = f * mul;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak * lv), t + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + th.decay / mul);
+      o.connect(g); g.connect(bus); o.start(t); o.stop(t + th.decay / mul + 0.05);
+    }
   }
 
   /** Call every frame: crossfade layers to intensity and schedule beats ahead (lookahead scheduler). */
@@ -105,7 +159,8 @@ export class AudioEngine {
     const ctx = this.ctx; if (!ctx || !this.layers) return;
     this.ambientEvents();
     const t = ctx.currentTime, I = this.intensity;
-    this.layers.drone.gain.setTargetAtTime(0.55 + 0.25 * (1 - I), t, 1.5);
+    this.layers.drone.gain.setTargetAtTime((0.55 + 0.25 * (1 - I)) * Math.max(this.theme?.drone ?? 0.3, I), t, 1.5);
+    if (this.theme) { const step = 30 / this.theme.bpm; if (this.themeNext < t - 1) this.themeNext = t + 0.1; while (this.themeNext < t + 0.2) { this.themeTick(this.themeNext); this.themeNext += step; } }
     this.layers.tension.gain.setTargetAtTime(Math.max(0, Math.min(1, (I - 0.15) * 2)) * 0.9, t, 0.8);
     this.layers.combat.gain.setTargetAtTime(I > 0.65 ? 0.9 : 0, t, I > 0.65 ? 0.4 : 2.5);
     const spb = 60 / (84 + I * 30);
@@ -117,6 +172,7 @@ export class AudioEngine {
       if (b % 4 === 0 || (b % 16 === 10)) this.kick(this.layers.combat, bt, b % 8 === 0 ? 1 : 0.6);
       if (b % 16 === 14 || b % 16 === 15) this.kick(this.layers.combat, bt, 0.45, 110);
       if (b % 2 === 1) this.hat(this.layers.combat, bt);
+      if (this.boss) this.note(this.layers.combat, [73.4, 73.4, 87.3, 73.4, 110, 73.4, 98, 82.4][b % 8], bt, 0.2, 0.11, 'sawtooth');
       // calm: sparse dissonant low notes (tritone/minor second), never a tune
       if (b % 16 === 0 && Math.random() < 0.35) this.note(this.layers.drone, [110, 155.6, 116.5, 77.8][Math.floor(Math.random() * 4)], bt, 3.5, 0.03, 'triangle');
       // heartbeat as danger rises (double thump)
@@ -129,7 +185,15 @@ export class AudioEngine {
   ambientEvents(): void {
     const ctx = this.ctx; if (!ctx) return;
     const t = ctx.currentTime; if (t < this.nextEvent) return;
+    const kind = this.theme?.events ?? 'none';
+    if (kind === 'fire') {                 // safehouse: candle and stove crackle
+      this.nextEvent = t + 0.15 + Math.random() * 0.9;
+      const g = ctx.createGain(), f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1800 + Math.random() * 3000; f.Q.value = 2;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.02 + Math.random() * 0.03, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.04 + Math.random() * 0.05);
+      f.connect(g); g.connect(this.bus.ambience); const n = this.noise(f); n.start(t); n.stop(t + 0.12); return;
+    }
     this.nextEvent = t + 7 + Math.random() * 14;
+    if (kind === 'none') return;
     const r = Math.random(), amb = this.bus.ambience, pan = ctx.createStereoPanner(); pan.pan.value = Math.random() * 1.6 - 0.8; pan.connect(amb);
     if (r < 0.5) {                      // far groan: buzzy voice falling in pitch through a throat-like band-pass
       const o = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain();
@@ -175,6 +239,15 @@ export class AudioEngine {
     const ctx = this.ctx!, f = ctx.createBiquadFilter(), g = ctx.createGain();
     f.type = 'highpass'; f.frequency.value = 7000; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.08, t + 0.003); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
     f.connect(g); g.connect(dest); const s = this.noise(f); s.start(t); s.stop(t + 0.07);
+  }
+
+  /** Dialogue voice blip: a soft tick whose pitch belongs to the speaker. */
+  blip(pitch = 1): void {
+    const ctx = this.ctx; if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = 'triangle'; o.frequency.value = 300 * pitch * (1 + (Math.random() - 0.5) * 0.08);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.035, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+    o.connect(g); g.connect(this.bus.voice); o.start(t); o.stop(t + 0.06);
   }
 
   // ---------------------------------------------------------------- one-shot SFX

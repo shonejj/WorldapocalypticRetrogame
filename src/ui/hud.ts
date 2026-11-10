@@ -5,6 +5,7 @@ import type { Game } from '../game/game';
 import type { Action, Input } from '../core/input';
 import { audio } from '../core/audio';
 import { readPrefs, writePrefs } from '../core/storage';
+import { portrait } from '../art/portraits';
 
 /**
  * HUD (game-ui-ux): anchored to corners with safe-area insets; driven by game EVENTS
@@ -22,6 +23,7 @@ export class Hud {
   private toasts = h('div.toasts'); private sub = h('div.subtitle'); private hurt = h('div.hurtflash');
   private signal = h('div.signal'); private blips: HTMLElement[] = [];
   private beatTitle = h('div.beattitle');
+  private bossEl = h('div.boss.hidden'); private bossName = h('div.bossname'); private bossBar = h('i'); private bossShown: unknown = null;
   private subTimer: { revert(): unknown } | null = null;
   tagsOn = true;
 
@@ -29,13 +31,14 @@ export class Hud {
     const squad = h('div.squad');
     g.squad.forEach((s, i) => {
       const hp = h('i'), hunger = h('i'), thirst = h('i'), tag = h('span.you'), bleed = h('span.bleed.hidden', {}, '●');
-      const el = h('div.member', { title: `${s.name} — ${s.survivor!.roleLabel}` },
-        h('div.top', {}, h('b', {}, s.name.toUpperCase()), h('span.key', {}, String(i + 1)), tag, bleed),
-        h('div.role', {}, s.survivor!.roleLabel), h('div.bar.hpbar', {}, hp), h('div.needs', {}, h('div.bar.hunger', { title: 'Hunger' }, hunger), h('div.bar.thirst', { title: 'Thirst' }, thirst)));
+      const pic = portrait(s.name.toUpperCase());
+      const el = h('div.member', { title: `${s.name} — ${s.survivor!.roleLabel}` }, pic ? h('img.mface', { src: pic }) : null,
+        h('div.minfo', {}, h('div.top', {}, h('b', {}, s.name.toUpperCase()), h('span.key', {}, String(i + 1)), tag, bleed),
+        h('div.bar.hpbar', {}, hp), h('div.needs', {}, h('div.bar.hunger', { title: 'Hunger' }, hunger), h('div.bar.thirst', { title: 'Thirst' }, thirst))));
       el.addEventListener('pointerdown', () => input.tap(`slot${i + 1}` as Action)); squad.append(el); this.members.push({ el, hp, hunger, thirst, tag, bleed });
       const t = h('div.ntag', {}, h('b', {}, s.name.toUpperCase()), h('span', {}, s.survivor!.roleLabel)); this.tags.push(t);
     });
-    const obj = h('div.objectives', {}, h('div.loc', {}, g.level.location), h('div.chapter', {}, g.level.name), this.objList);
+    const obj = h('div.objectives', {}, h('div.loc', {}, g.level.location), h('div.chapter', {}, `${g.level.number} — ${g.level.name}`), this.objList);
     for (const o of g.level.objectives) this.objList.append(h('div.obj', { 'data-id': o.id }, o.text));
     const weapon = h('div.weapon', {}, this.wname, this.ammo, this.status, this.inv, this.weight);
     const stealth = h('div.stealth', {}, this.eyeLbl, h('div.eye', {}, this.eyeBar), this.alertEl);
@@ -43,7 +46,9 @@ export class Hud {
     for (let i = 0; i < 20; i++) { const b = h('span.blip.hidden'); this.blips.push(b); this.signal.append(b); }
     this.prompt.append(this.promptKey, this.promptText, h('div.pbar', {}, this.promptBar));
     const buttons = h('div.topbtns', {}, h('button.icon', { onclick: onInventory, 'aria-label': 'Inventory and crafting' }, '▤'), h('button.icon', { onclick: onPause, 'aria-label': 'Pause' }, 'Ⅱ'));
-    this.root.append(this.hintEl, h('div.tags', {}, ...this.tags), squad, obj, stealth, weapon, this.signal, this.prompt, this.sub, this.toasts, this.beatTitle, buttons);
+    this.bossEl.append(this.bossName, h('div.bossbar', {}, this.bossBar));
+    this.root.append(this.hintEl, h('div.tags', {}, ...this.tags), squad, obj, stealth, weapon, this.signal, this.prompt, this.sub, this.toasts, this.beatTitle, this.bossEl, buttons);
+    this.root.classList.toggle('camp', g.camp); this.root.classList.toggle('survival', !g.story);
     document.body.append(this.hurt, this.root);
     // event subscriptions
     g.ev.on('toast', (e) => this.toast(e.text, e.kind));
@@ -54,6 +59,8 @@ export class Hud {
     g.ev.on('hurt', (e) => animate(this.hurt, { opacity: [Math.min(1, 0.35 + e.amount / 35), 0], duration: 650, ease: 'outQuad' }));
     g.ev.on('death', (e) => this.toast(e.player ? `${e.name} is down. You take over the next survivor.` : `${e.name} is down.`, 'warn'));
     g.ev.on('checkpoint', () => this.toast('Checkpoint — progress saved', 'info'));
+    g.ev.on('place', (e) => this.banner(e.title));
+    g.ev.on('bossDown', (e) => this.banner(`${e.name} is dead`));
     g.ev.on('beat', (e) => { if (e.beat.title) { this.beatTitle.textContent = e.beat.title.toUpperCase(); animate(this.beatTitle, { opacity: [0, 1, 1, 0], letterSpacing: ['0.6em', '0.35em'], duration: 3200, ease: 'outQuad' }); } });
     for (const id of g.objectives) this.objList.querySelector(`[data-id="${id}"]`)?.classList.add('done');
     this.refreshStash();
@@ -76,7 +83,8 @@ export class Hud {
     if (performance.now() > this.hintUntil) this.hintEl.classList.add('hidden');
     if (document.querySelector('.screen')) return;                // never behind the intro, menus or dialogue choices
     this.hint('move', t ? 'Drag the left stick to walk — push it to the edge to run.' : `${k('left')}/${k('right')} to walk, hold ${k('run')} to run. The mouse sets where you face.`);
-    if (g.inside) { this.hint('inside', t ? 'Inside: the stick moves you anywhere. Search what glints; the green sign is the way out.' : 'Inside: WASD moves you anywhere. Search what glints; the green sign is the way out.'); return; }
+    if (g.camp) { this.hint('camp', `Safe here. Walk up to the others and press ${t ? 'USE' : k('interact')} to talk; the table is a workbench; the bed ends the night.`); return; }
+    if (g.zone.def) this.hint('room', 'Rooms are not empty. Search what glints, read what you find, and leave by the door on the left.');
     if (g.time < 4) return;
     const near = g.infected.filter((z) => z.alive && Math.abs(z.x - L.x) < 10);
     const unaware = near.find((z) => z.state !== 'chase' && z.state !== 'dormant' && Math.sign(z.x - L.x) === z.facing && Math.abs(z.x - L.x) < 2.2);
@@ -85,8 +93,13 @@ export class Hud {
     if (near.some((z) => z.state === 'dormant')) this.hint('lure', t ? 'Sleepers wake to noise. Tap LURE to throw a bottle and pull them away.' : `Sleepers wake to noise. Press ${k('throw')} to throw a bottle where you aim.`);
     if (g.focus?.kind === 'cache') this.hint('search', t ? 'Something to search here — tap USE and keep still until it is done.' : `Press ${k('interact')} to search. Moving cancels it.`);
     if (g.focus?.kind === 'workbench') this.hint('bench', 'Miller can craft the relay fuse here: scrap, a battery and tape.');
+    if (g.focus?.kind === 'door') this.hint('door', t ? 'A door. Tap USE to take the whole squad inside.' : `A door. Press ${k('interact')} to take the whole squad inside.`);
+    if (g.boss?.chargeT !== undefined && g.boss.chargeT >= 0) this.hint('charge', 'When it plants its feet and roars, RUN — it charges. It is exposed after it hits a wall.');
     if (g.alert) this.hint('fight', t ? 'They have seen you. Hold FIRE — gunfire is loud and draws the whole street.' : `They have seen you. ${k('fire')} to shoot — gunfire draws the whole street.`);
   }
+
+  /** A place name or story beat, large and brief, across the upper third. */
+  banner(text: string): void { this.beatTitle.textContent = text.toUpperCase(); animate(this.beatTitle, { opacity: [0, 1, 1, 0], letterSpacing: ['0.6em', '0.35em'], duration: 3200, ease: 'outQuad' }); }
 
   toast(text: string, kind: 'loot' | 'info' | 'warn' = 'info'): void {
     const t = h(`div.toast.${kind}`, {}, text); this.toasts.append(t);
@@ -147,9 +160,12 @@ export class Hud {
       this.prompt.classList.remove('hidden');
       this.promptKey.textContent = this.input.label('interact');
       const f = g.focus;
-      this.promptText.textContent = f.kind === 'relay' && !g.stash.count(g.level.goal.needs) ? 'Inspect the relay' : f.label;
+      this.promptText.textContent = f.label;
       this.promptBar.style.width = `${g.progress * 100}%`;
     } else this.prompt.classList.add('hidden');
+    const boss = g.boss;
+    if (boss !== this.bossShown) { this.bossShown = boss; this.bossEl.classList.toggle('hidden', !boss); if (boss) { this.bossName.textContent = boss.infected!.boss!.title; animate(this.bossEl, { opacity: [0, 1], y: [10, 0], duration: 400, ease: 'outQuad' }); } }
+    if (boss) { wid(this.bossBar, boss.hp / boss.maxHp); this.bossBar.className = boss.exposed > 0 ? 'exposed' : boss.chargeT >= 0 ? 'charging' : ''; }
     // Iris: signal band shows infected positions within ±24 m
     const iris = g.squad.find((s) => s.survivor?.role === 'signalist');
     this.signal.classList.toggle('hidden', !iris?.alive);
@@ -160,7 +176,7 @@ export class Hud {
         const dx = z.x - L.x; if (Math.abs(dx) > 24) continue;
         const b = this.blips[k++]; b.classList.remove('hidden');
         b.style.left = `${50 + (dx / 24) * 48}%`; b.style.opacity = String(z.state === 'dormant' ? 0.35 : 0.55 + 0.45 * z.suspicion);
-        b.classList.toggle('big', z.type === 'brute'); b.classList.toggle('hot', z.state === 'chase');
+        b.classList.toggle('big', z.isBoss); b.classList.toggle('hot', z.state === 'chase');
       }
       for (; k < this.blips.length; k++) this.blips[k].classList.add('hidden');
     }

@@ -19,6 +19,8 @@ export class LightPool {
   readonly hemi: THREE.HemisphereLight;
   readonly key: THREE.DirectionalLight;
   private flash = 0;
+  /** mood-driven base intensities (lightning adds on top) */
+  readonly base = { hemi: 1.1, moon: 1.1 };
   /** Dynamic one-frame lights (muzzle flashes, fires) — added on top of the pool. */
   readonly transient: { x: number; y: number; z: number; color: number; intensity: number; distance: number; t: number }[] = [];
   private flashLight: THREE.PointLight;
@@ -51,7 +53,7 @@ export class LightPool {
     // moon shadow frustum follows the camera
     this.moon.position.set(camX + 10, 26, -22); this.moon.target.position.set(camX, 0, 0);    // back light: rims silhouettes, shadows fall toward camera
     this.key.position.set(camX - 4, 6, 20); this.key.target.position.set(camX, 1, 0);
-    this.moon.intensity = 1.1 + this.flash * 4; this.hemi.intensity = 1.1 + this.flash * 1.5;
+    this.moon.intensity = this.base.moon + this.flash * 4; this.hemi.intensity = this.base.hemi + this.flash * 1.5;
     const near = this.spots_.filter((s) => s.on !== false && Math.abs(s.x - camX) < 22)
       .sort((a, b) => Math.abs(a.x - camX) / a.intensity - Math.abs(b.x - camX) / b.intensity);
     const cones = near.filter((s) => s.cone), rest = near.filter((s) => !s.cone);

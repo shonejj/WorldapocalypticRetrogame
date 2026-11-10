@@ -7,22 +7,30 @@ import { Input } from './core/input';
 import { SimClock, STEP } from './core/clock';
 import { audio } from './core/audio';
 import { Game } from './game/game';
-import { CHAPTER1 } from './game/levels/chapter1';
+import { CAMPAIGN, levelById, nextLevel } from './game/campaign';
+import { CAMP_ARRIVE } from './game/levels/camps';
+import type { LevelDef } from './game/levels/types';
 import { Dialogue } from './game/dialogue';
-import { saveGame, latestSave, deleteSave, hasSave, type SaveData } from './game/save';
-import storyJson from './story/chapter1.ink';
+import { NOTES, type NoteId } from './game/data';
+import { saveGame, latestSave, deleteSave, hasSave, SAVE_VERSION, type SaveData } from './game/save';
+import storyJson from './story/story.ink';
+import { STORYBOARDS } from './story/storyboards';
 import { ScreenStack } from './ui/screens';
 import { Hud } from './ui/hud';
 import { TouchControls } from './ui/touch';
 import { loadCharacterAsset } from './art/skinned';
 import { loadAssets } from './art/assets';
+import { makePortraits } from './art/portraits';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
-import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, choiceScreen, endScreen, introScreen, footText } from './ui/menus';
+import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, endScreen, resultsScreen, footText } from './ui/menus';
+import { cutscene, conversation, noteScreen } from './ui/story';
+import { readPrefs, writePrefs } from './core/storage';
 import { h } from './ui/dom';
 import { registerServiceWorker } from './sw-register';
 
 /**
- * App shell: owns renderer, input, screen stack and the frame loop.
+ * App shell: owns renderer, input, screen stack and the frame loop, and runs the campaign —
+ * title → storyboard → chapter → results → storyboard → safehouse → … → one of three endings.
  * Loop (threejs-scene-setup + physics-tuning): renderer.setAnimationLoop + THREE.Timer
  * (visibility-aware), delta clamped, fixed 60 Hz simulation steps via SimClock (hit-stop
  * aware), then presentation + render once per frame.
@@ -37,14 +45,19 @@ class App {
   readonly clock = new SimClock();
   readonly timer = new THREE.Timer();
   game: Game | null = null; hud: Hud | null = null; dialogue: Dialogue | null = null;
-  private lines: { speaker: string; text: string }[] = []; private lineUntil = 0; private pendingChoices: string[] = []; private knot = '';
+  /** barks: subtitle lines that play while the game keeps running */
+  private lines: { speaker: string; text: string }[] = []; private lineUntil = 0;
+  /** conversations waiting for the screen to be free */
+  private scenes: { knot: string; then?: 'complete' }[] = [];
   offline = !!navigator.serviceWorker?.controller;
   private fps = h('div.fps.hidden'); private fpsAcc = 0; private fpsN = 0;
   private perf = { t: 0, n: 0, done: false };
   private carry: Set<string> | null = null;
+  private loading = false;
 
   constructor() {
     document.title = GAME.title;
+    (window as unknown as { __app: App }).__app = this;
     document.body.append(this.fps);
     this.r.renderer.info.autoReset = false;
     this.screens.onPop = () => this.input.flush();
@@ -65,9 +78,9 @@ class App {
 
   apply(s: Settings): void {
     Object.assign(audio.volumes, { master: s.master, music: s.music, sfx: s.sfx, ambience: s.ambience, voice: s.voice, ui: s.sfx * 0.8 });
-    audio.applyVolumes(); audio.setRain(s.rain);
+    audio.applyVolumes(); if (!this.game) audio.setRain(false);
     this.r.setQuality({ ...QUALITY_PRESETS[s.quality], pixel: s.pixel });
-    if (this.game) { this.game.story = s.mode !== 'survival'; this.game.rain.enabled = s.rain; this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; this.game.wet.setEnabled(QUALITY_PRESETS[s.quality].reflections); }
+    if (this.game) { this.game.story = s.mode !== 'survival'; this.game.prefs = { rain: s.rain, reflections: QUALITY_PRESETS[s.quality].reflections }; this.game.applyPrefs(); this.game.cam.shakeScale = s.shake; this.game.lights.moon.castShadow = QUALITY_PRESETS[s.quality].shadows; }
     if (this.hud) this.hud.tagsOn = s.nameTags;
     this.fps.classList.toggle('hidden', !s.showFps);
     this.updateTouch();
@@ -81,39 +94,106 @@ class App {
   // ---------------------------------------------------------------- flow
   title(): void {
     this.screens.clear();
+    audio.setTheme('title'); audio.setRain(false);
+    const save = hasSave('autosave') || hasSave('manual') ? latestSave() : null, lv = save ? levelById(save.chapter) : null;
     titleScreen(this.screens, {
-      canContinue: hasSave('autosave') || hasSave('manual'), offline: this.offline,
-      onContinue: () => this.start(latestSave()), onNew: () => { deleteSave('autosave'); this.start(null); },
+      canContinue: !!save, continueLabel: lv ? `Continue — ${lv.kind === 'camp' ? lv.name : lv.number.toLowerCase()}` : 'Continue', endings: readPrefs<{ ids: number[] }>('endings', { ids: [] }).ids.length, offline: this.offline,
+      onContinue: () => this.start(latestSave()), onNew: () => { deleteSave('autosave'); deleteSave('manual'); this.begin(CAMPAIGN[0], null); },
       onSettings: () => settingsScreen(this.screens, this.settings, this.input, (s) => this.apply(s)),
       onControls: () => controlsScreen(this.screens, this.input), onSquad: () => squadBio(this.screens),
     });
     this.updateTouch();
   }
 
+  /** A save that starts `level` from its beginning, carrying the squad's state over from the previous one. */
+  private freshSave(level: LevelDef, from: SaveData | null): SaveData {
+    return {
+      version: SAVE_VERSION, chapter: level.id, checkpoint: level.spawnX, savedAt: Date.now(), controlled: 0,
+      stash: from?.stash ?? { ammo_rifle: 36, ammo_9mm: 24, ammo_shells: 8, bandage: 1, food: 1, water: 1, bottle: 1 },
+      // whoever went down is carried to the next place and patched up: nobody is left behind between chapters
+      party: (from?.party ?? []).map((p) => ({ ...p, alive: true, hp: Math.max(p.hp, 60), bleed: 0, hunger: Math.max(p.hunger, 0.6), thirst: Math.max(p.thirst, 0.6) })),
+      looted: [], picked: [], killed: [], objectives: [], seenBeats: [], ink: from?.ink ?? null,
+      notes: from?.notes ?? [], upgrades: from?.upgrades ?? {}, stats: from?.stats ?? { time: 0, shots: 0 },
+    };
+  }
+
+  /** Enter a level from its start: storyboard first (if it has one), then play. */
+  begin(level: LevelDef, from: SaveData | null, board?: string): void {
+    audio.unlock(); goLandscape();
+    this.screens.clear(); this.teardown();
+    const save = this.freshSave(level, from);
+    saveGame('autosave', save);
+    const shots = STORYBOARDS[board ?? level.intro ?? ''];
+    if (shots) { audio.setTheme('title'); cutscene(this.screens, shots, () => this.start(save)); } else this.start(save);
+    this.updateTouch();
+  }
+
   start(save: SaveData | null): void {
+    if (this.loading) return;
+    if (!save) { this.begin(CAMPAIGN[0], null); return; }
     audio.unlock();
     goLandscape();
-    this.screens.clear(); this.teardown();
+    this.screens.clear(); this.teardown(); this.loading = true;
+    const level = levelById(save.chapter);
     const loading = h('div.loading', {}, h('div', {}, 'TUNING IN…'), h('div.bar', {}, h('i'))); document.body.append(loading);
     Promise.all([loadCharacterAsset(import.meta.env.BASE_URL).catch((e) => console.warn('[characters] falling back to built-in rig', e)), loadAssets(import.meta.env.BASE_URL)])
       .then(() => setTimeout(() => {
       try {
-        const g = (this.game = new Game(this.r, CHAPTER1, save, QUALITY_PRESETS[this.settings.quality].shadows));
-        this.dialogue = new Dialogue(storyJson); this.dialogue.load(save?.ink ?? null);
+        makePortraits(this.r.renderer);
+        const g = (this.game = new Game(this.r, level, save, QUALITY_PRESETS[this.settings.quality].shadows));
+        this.dialogue = new Dialogue(storyJson); this.dialogue.load(save.ink ?? null);
         this.hud = new Hud(g, this.input, () => this.pause(), () => this.inventory(false));
-        g.ev.on('dialogue', (e) => this.onDialogue(e.knot));
+        g.ev.on('dialogue', (e) => this.onDialogue(e.knot, e.then));
         g.ev.on('checkpoint', () => this.autosave());
+        g.ev.on('note', (e) => this.note(e.id));
+        g.ev.on('complete', () => this.levelComplete());
         g.ev.on('hitStop', (e) => this.clock.hitStop(performance.now(), e.seconds));
         g.ev.on('gameover', () => setTimeout(() => { this.updateTouch(); endScreen(this.screens, 'THE SIGNAL GOES QUIET', 'THE SQUAD DID NOT MAKE IT', '', [['Retry from checkpoint', () => this.start(latestSave())], ['Quit to title', () => this.quit()]]); }, 2200));
-        if (import.meta.env.DEV) (window as unknown as { __game: Game; __app: App }).__game = g;
-        (window as unknown as { __app: App }).__app = this;
+        (window as unknown as { __game: Game }).__game = g;
         this.apply(this.settings);
+        audio.setTheme(level.theme);
         this.warmUp(g);
-      } finally { loading.remove(); }
+        if (g.camp && !g.seenBeats.has('arrive')) { g.seenBeats.add('arrive'); this.scenes.push({ knot: CAMP_ARRIVE[level.id] }); }
+        else if (level.kind === 'chapter' && save.checkpoint === level.spawnX) this.hud.banner(`${level.number} — ${level.name}`);
+      } finally { loading.remove(); this.loading = false; }
       this.perf = { t: 0, n: 0, done: false };
-      if (!save) introScreen(this.screens, CHAPTER1.name, () => this.updateTouch());     // new game: the broadcast first
       this.updateTouch();
     }, 30));
+  }
+
+  /** The level's goal is done (or the squad slept): results, the storyboard, then the next place. */
+  private levelComplete(): void {
+    const g = this.game; if (!g) return;
+    const level = g.level, snap = g.snapshot(this.dialogue?.save() ?? null), next = nextLevel(level.id);
+    snap.stats = { time: (snap.stats?.time ?? 0), shots: snap.stats?.shots ?? 0 };
+    const go = () => {
+      if (!next) { this.ending(); return; }
+      this.begin(next, snap, level.outro);
+    };
+    if (level.kind === 'camp') { go(); return; }
+    const spots = level.caches.filter((c) => !c.room).length + level.rooms.reduce((n, r) => n + r.spots.length, 0);
+    const notes = level.rooms.flatMap((r) => r.spots).filter((sp) => sp.note), found = notes.filter((sp) => g.notes.has(sp.note!)).length;
+    resultsScreen(this.screens, { number: level.number, name: level.name, next: next ? 'Continue' : 'See how it ends', onNext: go, rows: [
+      ['Time', `${Math.floor(g.time / 60)}:${String(Math.floor(g.time % 60)).padStart(2, '0')}`],
+      ['Survivors standing', `${g.squad.filter((s) => s.alive).length} / 4`],
+      ['Infected put down', String([...g.killed].length)],
+      ['Places searched', `${Math.min(spots, g.looted.size)} / ${spots}`],
+      ['Documents found', `${found} / ${notes.length}`],
+      ['Shots fired', String(g.shotsFired)],
+    ] });
+    this.updateTouch();
+  }
+
+  private ending(): void {
+    const n = Math.max(1, Math.min(3, Number(this.dialogue?.get('ending') ?? 2)));
+    const seen = readPrefs<{ ids: number[] }>('endings', { ids: [] }); if (!seen.ids.includes(n)) { seen.ids.push(n); writePrefs('endings', seen); }
+    deleteSave('autosave'); deleteSave('manual');
+    this.screens.clear(); this.teardown(); audio.setTheme('ending');
+    cutscene(this.screens, STORYBOARDS[`ending${n}`], () => {
+      endScreen(this.screens, GAME.title.toUpperCase(), n === 3 ? 'THE TRUE ENDING' : `ENDING ${n} OF 3`,
+        n === 3 ? 'Thank you for playing.' : 'There is another way this could have gone. Trust the people walking with you, and read everything Dr. Hale left behind.', [['Back to title', () => this.title()]]);
+    });
+    this.updateTouch();
   }
 
   /**
@@ -131,7 +211,7 @@ class App {
     for (const o of hidden) o.visible = false;
   }
 
-  private teardown(): void { this.hud?.dispose(); this.hud = null; this.game?.dispose(); this.game = null; this.lines = []; this.pendingChoices = []; audio.duck(false); }
+  private teardown(): void { this.hud?.dispose(); this.hud = null; this.game?.dispose(); this.game = null; this.lines = []; this.scenes = []; this.lineUntil = 0; audio.duck(false); audio.setBoss(false); }
   quit(): void { this.autosave(); this.screens.clear(); this.teardown(); this.title(); }
   autosave(): void { if (this.game && !this.game.ended) saveGame('autosave', this.game.snapshot(this.dialogue?.save() ?? null)); }
 
@@ -149,44 +229,57 @@ class App {
   }
   inventory(atBench: boolean): void {
     if (!this.game || this.screens.open) return;
-    inventoryScreen(this.screens, this.game, { atBench, onClose: () => this.updateTouch() });
+    if (atBench && this.game.camp) this.game.setObjective('o_bench', true);
+    inventoryScreen(this.screens, this.game, { atBench, onClose: () => this.updateTouch(), onNote: (id) => noteScreen(this.screens, id, () => {}) });
+    this.updateTouch();
+  }
+  private note(id: NoteId): void {
+    const g = this.game!;
+    noteScreen(this.screens, id, () => {
+      this.updateTouch();
+      if (NOTES[id].research) this.hud?.toast(`Research note ${[...g.notes].filter((n) => NOTES[n].research).length} / 3`, 'loot');
+      if (g.level.id === 'ch3') g.setObjective('o_read', [...g.notes].filter((n) => n.startsWith('n_hale')).length >= 3);
+    });
     this.updateTouch();
   }
 
-  // ---------------------------------------------------------------- dialogue (Ink)
-  private onDialogue(knot: string): void {
+  // ---------------------------------------------------------------- story (Ink)
+  private onDialogue(knot: string, then?: 'complete'): void {
     if (knot === '__craft') { this.inventory(true); return; }
-    if (!this.dialogue) return;
-    if (knot === 'relay_restore') this.dialogue.set('has_fuse', true);
-    this.knot = knot;
-    const step = this.dialogue.start(knot);
-    this.lines.push(...step.lines); this.pendingChoices = step.choices; this.lineUntil = 0;
-    audio.duck(true);
+    if (!this.dialogue || !this.game) return;
+    if (knot.startsWith('bark_')) {                                   // subtitles while you keep moving
+      const step = this.dialogue.start(knot);
+      this.lines.push(...step.lines); this.lineUntil = 0; audio.duck(true);
+    } else this.scenes.push({ knot, then });
   }
-  private stepDialogue(now: number): void {
+  /** Run the next waiting conversation once nothing else is on screen. */
+  private stepScenes(): void {
+    const g = this.game;
+    if (!g || !this.dialogue || !this.scenes.length || this.screens.open || g.fading) return;
+    const sc = this.scenes.shift()!, d = this.dialogue;
+    d.set('research', [...g.notes].filter((n) => NOTES[n].research).length);
+    this.lines = []; this.hud?.clearSubtitle();
+    audio.duck(true);
+    conversation(this.screens, d.start(sc.knot), (i) => d.choose(i), () => {
+      audio.duck(false); this.updateTouch();
+      if (g.camp && sc.knot.startsWith('camp') && !sc.knot.endsWith('arrive')) { if (!g.interactables.some((i) => i.kind === 'talk')) g.setObjective('o_talk', true); }
+      if (g.level.id === 'ch3' && sc.knot === 'lab_enter') g.setObjective('o_in', true);
+      if (sc.then === 'complete') this.levelComplete();
+    });
+    this.updateTouch();
+  }
+  private stepBarks(now: number): void {
     if (!this.hud) return;
     if (this.lines.length && now >= this.lineUntil) {
       const l = this.lines.shift()!;
       this.lineUntil = now + this.hud.say(l.speaker, l.text);
       if (l.speaker === 'RADIO') audio.play('radioStatic', undefined, 0.6, 'voice');
-    } else if (!this.lines.length && this.lineUntil && now >= this.lineUntil) {
-      if (this.pendingChoices.length && !this.screens.open) {
-        const ch = this.pendingChoices; this.pendingChoices = [];
-        choiceScreen(this.screens, ch, (i) => { const s = this.dialogue!.choose(i); this.lines.push(...s.lines); this.pendingChoices = s.choices; this.lineUntil = 0; });
-      } else if (!this.pendingChoices.length) {
-        this.lineUntil = 0; this.hud.clearSubtitle(); audio.duck(false);
-        if (this.knot === 'relay_restore' && this.game) this.complete();
-      }
-    }
+    } else if (!this.lines.length && this.lineUntil && now >= this.lineUntil) { this.lineUntil = 0; this.hud.clearSubtitle(); audio.duck(false); }
   }
-  private complete(): void {
-    const g = this.game!; this.knot = ''; deleteSave('autosave');
-    const alive = g.squad.filter((s) => s.alive).length;
-    endScreen(this.screens, `${GAME.title.toUpperCase()}`, `${g.level.name.toUpperCase()} — COMPLETE`,
-      `Survivors: ${alive}/4 · Caches searched: ${g.looted.size}/${g.level.caches.length} · Infected put down: ${g.killed.size} · Time: ${Math.floor(g.time / 60)}:${String(Math.floor(g.time % 60)).padStart(2, '0')}. The voice gave coordinates north-east: a research facility. Chapter 2 continues the journey.`,
-      [['Back to title', () => this.quit()]]);
-    this.updateTouch();
-  }
+
+  // debug handles for automated playthroughs (tests/e2e) — not reachable from the UI
+  debugStart(id: string | null): void { this.start(this.freshSave(levelById(id ?? 'ch1'), null)); }
+  debugSkip(): void { this.screens.clear(); this.scenes = []; this.lines = []; this.updateTouch(); }
 
   // ---------------------------------------------------------------- frame loop
   private frame(): void {
@@ -207,9 +300,10 @@ class App {
         if (n === 0 && f.pressed.size) this.carry = f.pressed;      // no sim step this frame: keep taps for the next one
         for (let i = 0; i < n; i++) g.tick(STEP, i === 0 ? f : null);
       }
-      this.stepDialogue(now);
+      this.stepBarks(now); this.stepScenes();
     } else this.input.frame(now);            // drain buffered presses while menus are open
-    if (g) { this.input.planar = !!g.inside; g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
+    document.body.classList.toggle('cine', blocked);
+    if (g) { audio.setBoss(!!g.boss); g.update(blocked ? 0 : dt * this.clock.timeScale, this.clock.alpha); this.hud?.update(); this.touch.sync(!!g.focus, g.player.crouch); }
     audio.update();
     this.r.grade.uniforms.uHurt.value = g ? Math.max(0, 1 - g.leader.hp / g.leader.maxHp - 0.45) * 0.9 : 0;
     this.r.render(now / 1000);

@@ -18,7 +18,8 @@ export class CameraRig {
     const to = targetX - this.focusX;
     if (Math.abs(to) > this.deadzone) this.focusX += (Math.abs(to) - this.deadzone) * Math.sign(to);
     this.lead = damp(this.lead, facing * this.lookAhead + vx * 0.35, 2.2, dt);
-    const goal = clamp(this.focusX + this.lead, x0 + halfW - 1, x1 - halfW + 1);
+    // a place narrower than the view (small rooms) is simply centred
+    const goal = x1 - x0 < halfW * 2 - 2 ? (x0 + x1) / 2 : clamp(this.focusX + this.lead, x0 + halfW - 1, x1 - halfW + 1);
     this.x = damp(this.x, goal, this.rate, dt);
     // trauma shake: smooth noise, decays, quadratic response
     this.trauma = Math.max(0, this.trauma - dt * 1.4);
