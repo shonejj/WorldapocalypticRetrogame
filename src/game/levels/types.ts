@@ -9,7 +9,7 @@ export type Loot = Partial<Record<ItemId, number>>;
 /** A pacing beat (level-design pattern 2): intensity drives adaptive music and spawns. */
 export interface Beat { id: string; x0: number; x1: number; type: 'teach' | 'explore' | 'tension' | 'combat' | 'rest' | 'climax'; intensity: number; ink?: string; title?: string;
   /** camera moment for this stretch: zoom (distance ×), lift (m, + = higher) */
-  cam?: { zoom?: number; lift?: number } }
+  cam?: { zoom?: number; lift?: number; /** isometric 3/4 view, or a flat long-lens silhouette section */ mode?: 'iso' | 'flat' } }
 
 export interface InfectedSpawn { id: string; x: number; type: InfectedType; state: 'idle' | 'dormant' | 'wander'; facing?: 1 | -1 }
 
@@ -44,7 +44,7 @@ export interface LevelDef {
   trees: number[]; vehicles: { x: number; kind: VehicleKind; flip?: boolean; z?: number }[];
   props: { x: number; kind: PropKind; z?: number }[];
   /** room: a door into a RoomDef; otherwise a small searchable shown in close-up */
-  caches: { id: string; x: number; label: string; loot?: Loot; time: number; noise?: number; room?: string; style?: 'car' | 'box' | 'shelf' }[];
+  caches: { id: string; x: number; label: string; loot?: Loot; time: number; noise?: number; room?: string; /** a fully 3D house (src/house/plans.ts) */ house?: string; style?: 'car' | 'box' | 'shelf' }[];
   rooms: RoomDef[];
   pickups: { id: string; x: number; item: ItemId; qty: number }[];
   infected: InfectedSpawn[];

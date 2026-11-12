@@ -45,9 +45,9 @@ const DofShader = {
  */
 const GradeShader = {
   uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uHurt: { value: 0 }, uVignette: { value: 0.5 }, uShadow: { value: new THREE.Vector3(0.86, 1, 1.12) }, uHigh: { value: new THREE.Vector3(1.1, 1, 0.86) },
-    uSat: { value: 1 }, uLift: { value: new THREE.Color(0) }, uBands: { value: 34 }, uRes: { value: new THREE.Vector2(640, 360) }, uFade: { value: 0 } },
+    uSat: { value: 1 }, uLift: { value: new THREE.Color(0) }, uBands: { value: 34 }, uRes: { value: new THREE.Vector2(640, 360) }, uFade: { value: 0 }, uFlat: { value: 0 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform float uHurt; uniform float uVignette; uniform vec3 uShadow; uniform vec3 uHigh; uniform float uSat; uniform vec3 uLift; uniform float uBands; uniform vec2 uRes; uniform float uFade; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uHurt; uniform float uVignette; uniform vec3 uShadow; uniform vec3 uHigh; uniform float uSat; uniform vec3 uLift; uniform float uBands; uniform vec2 uRes; uniform float uFade; uniform float uFlat; varying vec2 vUv;
     float bayer(vec2 p){ vec2 q = floor(mod(p, 4.0)); float i = q.x + q.y * 4.0;
       float m = i < 1.0 ? 0.0 : i < 2.0 ? 8.0 : i < 3.0 ? 2.0 : i < 4.0 ? 10.0 : i < 5.0 ? 12.0 : i < 6.0 ? 4.0 : i < 7.0 ? 14.0 : i < 8.0 ? 6.0 : i < 9.0 ? 3.0 : i < 10.0 ? 11.0 : i < 11.0 ? 1.0 : i < 12.0 ? 9.0 : i < 13.0 ? 15.0 : i < 14.0 ? 7.0 : i < 15.0 ? 13.0 : 5.0;
       return (m / 16.0 - 0.47) * 0.7; }
@@ -57,6 +57,8 @@ const GradeShader = {
       c.rgb = mix(vec3(l), c.rgb, uSat);
       c.rgb *= mix(uShadow, uHigh, smoothstep(0.02, 0.6, l));
       c.rgb += uLift * (1.0 - smoothstep(0.0, 0.35, l));
+      // flat 2D sections: everything on the lane collapses to black cut-outs against the lit fog
+      if (uFlat > 0.0) { float sil = smoothstep(0.1, 0.24, l); c.rgb = mix(c.rgb, c.rgb * sil * 1.25, uFlat); }
       vec2 d = vUv - 0.5; float vig = smoothstep(0.85, 0.25, length(d * vec2(1.3, 1.0)));
       c.rgb *= mix(1.0, vig, uVignette);
       c.rgb = mix(c.rgb, c.rgb * vec3(1.8,0.35,0.3), uHurt * (1.0 - vig * 0.6));
@@ -90,6 +92,11 @@ export class Renderer {
   zoom = 1; lift = 0; swing = 0;
   /** interiors: isometric camera around this target (null = side-scrolling street camera) */
   iso: THREE.Vector3 | null = null;
+  /** 3D houses: the caller places the camera itself (third person) */
+  view: ((cam: THREE.PerspectiveCamera) => void) | null = null;
+  /** street camera blends: 0 = side-on 2.5D, 1 = isometric 3/4 (isoK) / long-lens flat 2D silhouettes (flatK) */
+  isoK = 0; flatK = 0; private baseFov = 43;
+  private tmpP = new THREE.Vector3(); private tmpL = new THREE.Vector3(); private tmpA = new THREE.Vector3(); private tmpB = new THREE.Vector3();
   get distance(): number { return this.baseDistance * this.zoom; }
 
   constructor(readonly canvas: HTMLCanvasElement) {
@@ -160,7 +167,7 @@ export class Renderer {
     this.canvas.classList.toggle('pixelated', this.quality.pixel !== 0);
     this.camera.aspect = w / h;
     // keep enough horizontal coverage on tall/narrow screens (tablets, portrait phones)
-    this.camera.fov = w / h < 1.4 ? 54 : w / h < 1.7 ? 48 : 43;
+    this.camera.fov = this.baseFov = w / h < 1.4 ? 54 : w / h < 1.7 ? 48 : 43;
     this.camera.updateProjectionMatrix();
   }
 
@@ -169,16 +176,27 @@ export class Renderer {
 
   render(time: number): void {
     const f = this.focus, s = this.shakeOffset;
-    if (this.iso) { const t = this.iso; this.camera.position.set(t.x + 5.0 + s.x, t.y + 7.6 + s.y, t.z + 6.3); this.camera.lookAt(t); }
+    let focus = this.camera.position.z; this.grade.uniforms.uFlat.value = 0;
+    if (this.view) { this.view(this.camera); focus = 3; }
+    else if (this.iso) { const t = this.iso; this.camera.position.set(t.x + 5.0 + s.x, t.y + 7.6 + s.y, t.z + 6.3); this.camera.lookAt(t); focus = this.camera.position.distanceTo(t); }
     else {
-      this.camera.position.set(f.x + s.x - this.swing, f.y - 0.45 + this.lift + s.y, this.distance);
-      this.camera.lookAt(f.x + s.x * 0.5, f.y + this.lift * 0.35 + s.y * 0.5, 0);
+      // street: side-on 2.5D, blended toward an isometric 3/4 view (isoK) or a long-lens flat silhouette view (flatK)
+      const d = this.distance, ik = this.isoK, fk = this.flatK;
+      const px = f.x + s.x - this.swing, py = f.y - 0.45 + this.lift + s.y, lx = f.x + s.x * 0.5, ly = f.y + this.lift * 0.35 + s.y * 0.5;
+      const P = this.tmpP.set(px, py, d), Lk = this.tmpL.set(lx, ly, 0);
+      if (ik > 0) { P.lerp(this.tmpA.set(f.x - d * 0.7 + s.x, f.y + d * 1.1 + s.y, d * 0.66), ik); Lk.lerp(this.tmpB.set(f.x + 0.6, f.y - 1.2, -1.2), ik); }
+      if (fk > 0) { P.lerp(this.tmpA.set(f.x + s.x, f.y + 0.35 + s.y, d * 3.6), fk); Lk.lerp(this.tmpB.set(f.x, f.y + 0.35, 0), fk); }
+      this.camera.position.copy(P); this.camera.lookAt(Lk);
+      const fov = this.baseFov * (1 - 0.72 * fk);
+      if (Math.abs(this.camera.fov - fov) > 0.01) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+      focus = P.distanceTo(Lk);
+      this.grade.uniforms.uFlat.value = fk;
     }
     this.camera.rotation.z += s.z;
     this.grade.uniforms.uTime.value = time % 100;
     const u = this.dof.uniforms, rb = this.composer.readBuffer;
     u.tDepth.value = rb.depthTexture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
-    u.uFocus.value = this.iso ? this.camera.position.distanceTo(this.iso) : this.camera.position.z; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
+    u.uFocus.value = focus; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
     this.grade.uniforms.uRes.value.set(rb.width, rb.height); this.grade.uniforms.uBands.value = this.quality.pixel === 0 ? 0 : 34;
     this.composer.render();
   }

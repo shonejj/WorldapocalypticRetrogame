@@ -60,7 +60,7 @@ export class LightPool {
     this.spots.forEach((L, i) => {
       const s = cones[i];
       if (!s) { L.intensity = 0; return; }
-      L.position.set(s.x, s.y, s.z); L.target.position.set(s.x + 0.3, 0, s.z + 1.2);
+      L.position.set(s.x, s.y, s.z); if (s.aim) L.target.position.set(s.aim.x, s.aim.y, s.aim.z); else L.target.position.set(s.x + 0.3, 0, s.z + 1.2); L.angle = s.angle ?? 0.75;
       L.color.setHex(s.color); L.intensity = s.intensity * 2.2 * this.flick(s, time); L.distance = s.distance * 1.3;
     });
     const pointsList = [...cones.slice(POOL_SPOT), ...rest];

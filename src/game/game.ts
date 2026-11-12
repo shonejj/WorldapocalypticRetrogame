@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { WetReflections } from '../render/wet';
 import { buildRoom } from '../art/rooms';
+import { House } from '../house/house';
+import { HOUSES, type MiniGame } from '../house/plans';
 import { FACADE_Z } from '../art/buildings';
 import * as planck from 'planck';
 import { Actor, idle, type Host, type Intent } from './actor';
@@ -41,6 +43,7 @@ export interface GameEvents extends Record<string, unknown> {
   hurt: { amount: number };
   death: { name: string; player: boolean };
   switched: { index: number };
+  zone: object;
   objective: { id: string; done: boolean };
   checkpoint: { x: number };
   stash: Record<string, never>;
@@ -50,7 +53,7 @@ export interface GameEvents extends Record<string, unknown> {
   complete: Record<string, never>;
 }
 
-export interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'door' | 'exit' | 'workbench' | 'goal' | 'talk' | 'rest'; loot?: Loot; note?: NoteId; time: number; noise?: number; room?: string; knot?: string; style?: 'car' | 'box' | 'shelf' }
+export interface Interactable { id: string; x: number; label: string; kind: 'cache' | 'door' | 'exit' | 'workbench' | 'goal' | 'talk' | 'rest' | 'house'; house?: string; loot?: Loot; note?: NoteId; time: number; noise?: number; room?: string; knot?: string; style?: 'car' | 'box' | 'shelf' }
 /** A stretch of the lane the squad can be in: the street, or one room. Actors are clamped to their zone. */
 export interface Zone { id: string; x0: number; x1: number; mood: MoodId; def?: RoomDef; doorX: number; visited: boolean }
 const ROOM_X = 1000, ROOM_GAP = 240, ROOM_ZOOM = 0.64;
@@ -86,6 +89,10 @@ export class Game implements Host, AIWorld {
   focus: Interactable | null = null; progress = 0; private using: Interactable | null = null;
   alert = false; intensity = 0; private beat: Beat | null = null;
   paused = false; ended = false; private lastShot = -99;
+  /** inside a fully 3D house (third person); the street simulation waits */
+  house: House | null = null; private allLights: LightSpot[] = [];
+  /** set by the app: opens a minigame overlay */
+  minigame: (k: MiniGame) => Promise<boolean> = async () => true;
 
   constructor(readonly r: Renderer, readonly level: LevelDef, save: SaveData | null, shadows: boolean) {
     this.rng = new Rng(level.seed);
@@ -101,7 +108,7 @@ export class Game implements Host, AIWorld {
       this.zones.push({ id: def.id, x0: X, x1: X + def.w, mood: def.mood ?? (def.kind === 'safehouse' ? 'camp' : def.kind === 'lab' ? 'lab' : 'room'), def, doorX: door?.x ?? level.spawnX, visited: false });
     });
     this.zone = this.zones[0];
-    this.lights.set(allLights);
+    this.lights.set(allLights); this.allLights = allLights;
     this.fx = new Fx(r.scene); this.rain = new Rain(r.scene);
     // no rain under shop awnings (they stretch ~1.3 m out from the facade, ~3.6 m up)
     this.rain.cover = level.buildings.filter((b) => b.kind === 'store' || b.kind === 'pharmacy').map((b) => ({ x0: b.x + 0.3, x1: b.x + b.w - 0.3, z0: FACADE_Z, z1: FACADE_Z + 1.35, y: 3.6 }));
@@ -139,7 +146,8 @@ export class Game implements Host, AIWorld {
     // interactables
     const glint = (id: string, x: number) => { const m = lootSpot(hashString(id)); m.position.set(x, 0, -0.95); r.scene.add(m); this.lootSpots.set(id, m); };
     for (const c of level.caches) {
-      if (c.room) { this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'door', room: c.room, time: 0 }); if (!this.roomEmpty(c.room)) glint(c.id, c.x); }
+      if (c.house) { if (!this.houseEmpty(c.house)) glint(c.id, c.x); this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'house', house: c.house, time: 0 }); }
+      else if (c.room) { this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'door', room: c.room, time: 0 }); if (!this.roomEmpty(c.room)) glint(c.id, c.x); }
       else if (!this.looted.has(c.id)) { this.interactables.push({ id: c.id, x: c.x, label: c.label, kind: 'cache', loot: c.loot, time: c.time, noise: c.noise, style: c.style }); glint(c.id, c.x); }
     }
     for (const z of this.zones) {
@@ -400,6 +408,7 @@ export class Game implements Host, AIWorld {
       const G = this.level.goal;
       if (F.kind === 'workbench') { this.ev.emit('dialogue', { knot: '__craft' }); return; }
       if (F.kind === 'door') { this.enterRoom(F.room!); return; }
+      if (F.kind === 'house') { this.enterHouse(F.house!, F.x); return; }
       if (F.kind === 'exit') { this.leaveRoom(); return; }
       if (F.kind === 'talk') { this.seenBeats.add(F.id); this.interactables = this.interactables.filter((i) => i !== F); this.ev.emit('dialogue', { knot: F.knot! }); return; }
       if (F.kind === 'goal' && G) {
@@ -485,6 +494,7 @@ export class Game implements Host, AIWorld {
   // ------------------------------------------------------------------ simulation
   tick(dt: number, f: InputFrame | null): void {
     this.time += dt;
+    if (this.house) { this.house.tick(dt, f); if (this.house.done && !this.fading) this.exitHouse(); return; }
     if (f && this.camp) { f.held.delete('fire'); f.held.delete('run'); for (const k of ['melee', 'throw', 'heal', 'crouch', 'reload'] as const) f.pressed.delete(k); }   // the safehouse is safe
     if (f && !this.ended) this.commands(f);
     // first sub-step gets the full frame; later sub-steps keep held state but no repeated one-shots
@@ -571,8 +581,12 @@ export class Game implements Host, AIWorld {
     const k = 1 - Math.exp(-(close ? 3 : 1.6) * dt), cm = close ?? (inRoom ? { zoom: ROOM_ZOOM, lift: 0.4 } : this.beat?.cam);
     this.r.zoom += ((cm?.zoom ?? 1) - this.r.zoom) * k;
     this.r.lift += ((cm?.lift ?? 0) - this.r.lift) * k;
+    const mode = close || inRoom ? undefined : this.beat?.cam?.mode, km = 1 - Math.exp(-1.1 * dt);
+    this.r.isoK += ((mode === 'iso' ? 1 : 0) - this.r.isoK) * km;
+    this.r.flatK += ((mode === 'flat' ? 1 : 0) - this.r.flatK) * km;
     this.r.swing += (L.vx * 0.5 - this.r.swing) * (1 - Math.exp(-2.2 * dt));
     this.r.shakeOffset.set(this.cam.offset.x, this.cam.offset.y, this.cam.offset.roll);
+    if (this.house) { this.house.update(dt); this.fx.update(dt); audio.setIntensity(0.15); return; }
     audio.listenerX = this.cam.x;
     this.lights.update(this.cam.x, this.time);
     this.rain.update(dt, this.cam.x); this.haze.update(dt, this.cam.x);
@@ -638,6 +652,23 @@ export class Game implements Host, AIWorld {
       if (!z.visited) { z.visited = true; if (z.def?.ink && !this.seenBeats.has(`room:${z.id}`)) { this.seenBeats.add(`room:${z.id}`); this.ev.emit('dialogue', { knot: z.def.ink }); } }
     });
   }
+  private houseEmpty(id: string): boolean { const d = HOUSES[id]; return !d || Object.keys(d.spots).every((k) => this.looted.has(`${id}:${k}`)); }
+  enterHouse(id: string, doorX: number): void {
+    if (this.fading || this.house || !HOUSES[id]) return;
+    this.using = null; this.focus = null;
+    this.fade(() => { this.house = new House(this, HOUSES[id], doorX, (k) => this.minigame(k)); this.setMood('house'); this.ev.emit('zone', {}); });
+  }
+  private exitHouse(): void {
+    const h = this.house; if (!h) return;
+    this.fade(() => {
+      h.dispose(); this.house = null;
+      this.lights.set(this.allLights); this.setMood(this.zone.mood);
+      const L = this.leader; L.x = h.doorX; this.squad.forEach((s, i) => { if (s !== L) s.x = h.doorX - (i + 1) * 0.6; });
+      if (this.houseEmpty(h.def.id)) { const c = this.level.caches.find((q) => q.house === h.def.id); const m = c && this.lootSpots.get(c.id); if (m) { m.getObjectByName('glint')?.removeFromParent(); this.lootSpots.delete(c!.id); } }
+      this.cam.snap(L.x); this.ev.emit('zone', {}); this.ev.emit('stash', {});
+    });
+  }
+
   private leaveRoom(): void {
     const z = this.zone; if (!z.def || this.fading) return;
     audio.play('door', this.leader.x, 0.9);

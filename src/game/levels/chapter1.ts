@@ -42,6 +42,7 @@ export const CHAPTER1: LevelDef = {
     { x: 113, kind: 'crate' }, { x: 119, kind: 'barrier' }, { x: 133, kind: 'tires', z: -3.6 },
   ],
   caches: [
+    { id: 'c_house_apt', x: 62.5, label: 'Go into the apartment house', house: 'h_apt', time: 0 },
     { id: 'c_veggies', x: -12.5, label: `Enter ${WORLD_NAMES.storeName}`, room: 'r_store', time: 0 },
     { id: 'c_sedan', x: 7.6, label: 'Search the sedan', style: 'car', loot: { ammo_rifle: 12, tape: 1 }, time: 1.3, noise: 3 },
     { id: 'c_apartment', x: 18, label: 'Enter the apartment', room: 'r_apt', time: 0 },
@@ -100,7 +101,7 @@ export const CHAPTER1: LevelDef = {
     { id: 'pharmacy', x0: 24, x1: 40, type: 'tension', intensity: 0.45, ink: 'bark_pharmacy' },
     { id: 'garage', x0: 40, x1: 62, type: 'rest', intensity: 0.15, ink: 'bark_garage', cam: { zoom: 0.9 } },
     { id: 'overpass', x0: 62, x1: 96, type: 'combat', intensity: 0.75, ink: 'overpass', title: 'Under the overpass', cam: { zoom: 1.1, lift: -0.45 } },
-    { id: 'breather', x0: 96, x1: 116, type: 'rest', intensity: 0.2, ink: 'bark_breather' },
+    { id: 'breather', x0: 96, x1: 116, type: 'rest', intensity: 0.2, ink: 'bark_breather', cam: { mode: 'iso', zoom: 0.95 } },
     { id: 'relay', x0: 116, x1: 150, type: 'climax', intensity: 1, ink: 'bark_relay_approach', title: WORLD_NAMES.relayName, cam: { zoom: 1.2, lift: 0.7 } },
   ],
   objectives: [

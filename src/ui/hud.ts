@@ -82,6 +82,7 @@ export class Hud {
     const g = this.g, L = g.leader, t = this.input.device === 'touch', k = (a: Parameters<Input['label']>[0]) => this.input.label(a);
     if (performance.now() > this.hintUntil) this.hintEl.classList.add('hidden');
     if (document.querySelector('.screen')) return;                // never behind the intro, menus or dialogue choices
+    if (g.house) { this.hint('house', t ? 'Inside a house. Left stick walks and turns, FIRE shoots where you face, USE searches.' : `Inside a house. Click to look with the mouse (Esc frees it) — W/S walk, A/D strafe, ←/→ turn, ${k('interact')} search, ${k('melee')} shove.`); return; }
     this.hint('move', t ? 'Drag the left stick to walk — push it to the edge to run.' : `${k('left')}/${k('right')} to walk, hold ${k('run')} to run. The mouse sets where you face.`);
     if (g.camp) { this.hint('camp', `Safe here. Walk up to the others and press ${t ? 'USE' : k('interact')} to talk; the table is a workbench; the bed ends the night.`); return; }
     if (g.zone.def) this.hint('room', 'Rooms are not empty. Search what glints, read what you find, and leave by the door on the left.');

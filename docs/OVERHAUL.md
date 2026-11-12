@@ -58,6 +58,17 @@ rewrite would throw away every system and the deploy pipeline). The work is dire
 - [x] Automated playthrough bot (Playwright) through every chapter; zero console errors
 - [x] `npm run check` green; docs and asset manifest updated
 
+### M8 — v0.4: Long Gone direction, stability (second feedback round)
+Reference: *Long Gone* (Hillfort Games) — the street is 2.5D pixel platforming, the houses are fully 3D and
+(relatively) safe; inspect and search what people left behind. Feedback: PC browser crashes, enemies stand or lie
+still, wants third-person areas inside buildings, minigames, more camera variety, less text.
+- [x] Root cause of frozen infected: memory `Sequence` guards never re-checked → `When` guard node
+- [x] PC stability: audio beat backlog after a background tab (could schedule thousands of nodes), audio suspends when hidden, WebGL context-loss recovery, half-res PBR maps, one shadow map, per-level textures freed
+- [x] Fully 3D houses, third person over the shoulder: floor plans, flashlight, hinged doors, infected that path through rooms, hitscan + shove, searching (one per chapter: apartment, farmhouse, staff quarters)
+- [x] Minigames: lockpick, breaker puzzle, radio tuning
+- [x] Camera variety on the street: isometric stretches and flat long-lens silhouette sections (per beat)
+- [ ] Enemy idle life on the street (feeding, wandering packs) and readability pass
+
 ## Status (v0.3.0)
 Everything above is implemented and verified by `npm run check` and the headless campaign run. Still open, in order of value:
 hand-drawn sprite characters (the cast is still 3D models through the pixel pass), per-chapter enemy variants, a dodge move,

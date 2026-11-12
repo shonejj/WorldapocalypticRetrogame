@@ -24,6 +24,7 @@ export const CHAPTER3: LevelDef = {
   vehicles: [{ x: 14, kind: 'van', z: -7.5 }, { x: 38, kind: 'sedan' }, { x: 43, kind: 'hatch', flip: true }, { x: 48, kind: 'sedan', z: -7.2 }, { x: 53, kind: 'van', flip: true }, { x: 59, kind: 'hatch', z: -7.4 }, { x: 62, kind: 'truck', flip: true }],
   props: [{ x: 6, kind: 'barrier' }, { x: 18, kind: 'barrier' }, { x: 24, kind: 'cone', z: 1.0 }, { x: 35, kind: 'barrel' }, { x: 46, kind: 'crate' }, { x: 57, kind: 'cone', z: 0.9 }, { x: 64, kind: 'dumpster', z: -3.4 }, { x: 78, kind: 'crate' }, { x: 88, kind: 'barrier' }],
   caches: [
+    { id: 'c3_house_dorm', x: 90, label: 'Go into the staff quarters', house: 'h_dorm', time: 0 },
     { id: 'c3_post', x: 30, label: 'Search the security post', style: 'box', loot: { ammo_rifle: 20, ammo_9mm: 12, bandage: 1 }, time: 1.4 },
     { id: 'c3_car', x: 39.6, label: 'Search the sedan', style: 'car', loot: { scrap: 3, bottle: 1 }, time: 1.3, noise: 3 },
     { id: 'c3_van', x: 54.6, label: 'Search the van', style: 'car', loot: { medkit: 1, ammo_shells: 8 }, time: 1.3, noise: 3 },
@@ -49,7 +50,7 @@ export const CHAPTER3: LevelDef = {
   ],
   checkpoints: [24, 62],
   beats: [
-    { id: 'fence', x0: -10, x1: 24, type: 'teach', intensity: 0.3, ink: 'labs_start' },
+    { id: 'fence', x0: -10, x1: 24, type: 'teach', intensity: 0.3, ink: 'labs_start', cam: { mode: 'flat' } },
     { id: 'lot', x0: 24, x1: 62, type: 'combat', intensity: 0.7, ink: 'bark_lot', title: 'Staff car park', cam: { zoom: 1.12, lift: 0.3 } },
     { id: 'door', x0: 62, x1: 96, type: 'tension', intensity: 0.6, cam: { zoom: 1.15, lift: 0.9 } },
   ],

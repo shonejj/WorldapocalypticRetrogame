@@ -72,7 +72,7 @@ export function applyUpgrades(u: Upgrades): void {
 }
 
 // ---------------------------------------------------------------- notes (lore; the three research notes unlock the true ending)
-export type NoteId = 'n_shift' | 'n_rx' | 'n_fridge' | 'n_order' | 'n_ticket' | 'n_trooper' | 'n_motel' | 'n_diner' | 'n_hale1' | 'n_hale2' | 'n_hale3' | 'n_child';
+export type NoteId = 'n_shift' | 'n_rx' | 'n_fridge' | 'n_order' | 'n_ticket' | 'n_trooper' | 'n_motel' | 'n_diner' | 'n_hale1' | 'n_hale2' | 'n_hale3' | 'n_child' | 'n_radio' | 'n_bunk';
 export interface NoteDef { title: string; text: string; research?: boolean }
 export const NOTES: Record<NoteId, NoteDef> = {
   n_shift: { title: 'Shift log — FRESH VEGGIES', text: '14 March. Last delivery came in. The driver was coughing blood into his sleeve and wouldn\'t look at me. I told him to go to the pharmacy. He said the pharmacy sent him here.' },
@@ -86,6 +86,8 @@ export const NOTES: Record<NoteId, NoteDef> = {
   n_hale1: { title: 'Lab journal — E. Hale', text: 'The organism does not kill the resistant. It settles. In their blood it makes something we cannot synthesise. One donor could seed a serum for a city — but the draw we need would stop a heart.' },
   n_hale2: { title: 'Lab journal — E. Hale, later', text: 'I was wrong about the dose. Two carriers. Half the draw each, twelve hours apart, and the fraction still takes. Nobody has to die on the table. I need TWO. I only ever had one.', research: true },
   n_hale3: { title: 'Recording transcript', text: 'PROTOCOL LIGHTHOUSE is the only thing I have left to try. If you are resistant and you can hear this, come to Genova. I will be here. I will wait as long as I can.' },
+  n_radio: { title: 'Frequency log, kitchen wall', text: 'Pencil marks on the wallpaper, one for every night: 7.390 MHz. Numbers, a woman\'s voice, then the same word every time — GENOVA. Under the last mark: "If it stops, go."' },
+  n_bunk: { title: 'Bunk 31 — a nurse\'s diary', text: 'Dr. Hale stopped sleeping. She walks the corridor at night talking to the girl through the glass. Today she asked me my blood type. Then she asked if I had ever been bitten. I lied.' },
   n_child: { title: 'A child\'s drawing', text: 'A tall building with an antenna. Two stick figures holding hands. In crayon: "MUM\'S WORK. WE LIVE HERE NOW."' },
 };
 

@@ -24,7 +24,7 @@ export class Fx {
   private puffs: { s: THREE.Sprite; t: number; max: number; vx: number; vy: number; grow: number; a: number }[] = []; private puffI = 0;
 
   constructor(scene: THREE.Scene) {
-    scene.add(this.root);
+    this.root.name = 'fx'; scene.add(this.root);
     this.inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ roughness: 0.4 }), MAX);
     this.inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.inst.count = 0; this.inst.frustumCulled = false;
     this.root.add(this.inst);

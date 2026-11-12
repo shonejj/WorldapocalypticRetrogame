@@ -21,6 +21,7 @@ import { TouchControls } from './ui/touch';
 import { loadCharacterAsset } from './art/skinned';
 import { loadAssets } from './art/assets';
 import { makePortraits } from './art/portraits';
+import { playMinigame } from './ui/minigames';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
 import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, endScreen, resultsScreen, footText } from './ui/menus';
 import { cutscene, conversation, noteScreen } from './ui/story';
@@ -150,6 +151,7 @@ class App {
       try {
         makePortraits(this.r.renderer);
         const g = (this.game = new Game(this.r, level, save, QUALITY_PRESETS[this.settings.quality].shadows));
+        g.minigame = (k) => { this.input.flush(); return playMinigame(k).finally(() => this.input.flush()); };
         this.dialogue = new Dialogue(storyJson); this.dialogue.load(save.ink ?? null);
         this.hud = new Hud(g, this.input, () => this.pause(), () => this.inventory(false));
         g.ev.on('dialogue', (e) => this.onDialogue(e.knot, e.then));

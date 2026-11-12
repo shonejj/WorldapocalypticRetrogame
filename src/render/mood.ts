@@ -15,7 +15,7 @@ export interface Mood {
   exposure: number; shadow: [number, number, number]; high: [number, number, number]; sat: number; lift: number; vignette: number;
   rain: boolean; wet: boolean; haze: number; rim: [number, number]; env: number;
 }
-export type MoodId = 'rainNight' | 'fogDawn' | 'dusk' | 'lab' | 'room' | 'camp';
+export type MoodId = 'rainNight' | 'fogDawn' | 'dusk' | 'lab' | 'room' | 'camp' | 'house';
 
 export const MOODS: Record<MoodId, Mood> = {
   // Chapter 1: rain at night. Blue fog glows behind the street; sodium lamps are the only warmth.
@@ -33,6 +33,9 @@ export const MOODS: Record<MoodId, Mood> = {
   // Searchable rooms: a torch-lit pocket of the old world. Warm where a lamp still burns, black elsewhere.
   room: { fog: 0x120d0a, density: 0.016, sky: [0x040506, 0x040506, 0x040506], hemi: [0x8a6e58, 0x1a130d, 0.6], moon: [0xffd0a0, 0], key: [0xffd8b0, 0.5],
     exposure: 1.4, shadow: [0.95, 0.98, 1.08], high: [1.14, 1.0, 0.82], sat: 1.0, lift: 0.006, vignette: 0.7, rain: false, wet: false, haze: 0, rim: [0xffc890, 0.18], env: 0.5 },
+  // 3D houses: dust in cold window light, a candle somebody left burning, your flashlight
+  house: { fog: 0x0e1014, density: 0.05, sky: [0x040506, 0x040506, 0x040506], hemi: [0x5a6a78, 0x18120c, 0.35], moon: [0xa0b8d0, 0], key: [0xc8d4e0, 0.12],
+    exposure: 1.45, shadow: [0.9, 0.98, 1.12], high: [1.12, 1.02, 0.88], sat: 0.95, lift: 0.004, vignette: 0.85, rain: false, wet: false, haze: 0, rim: [0x9fb8d0, 0.12], env: 0.35 },
   // Safehouse: candles, lanterns, blankets. The one place that is safe.
   camp: { fog: 0x2a1c12, density: 0.012, sky: [0x060607, 0x060607, 0x060607], hemi: [0xb08a64, 0x2a1c12, 0.95], moon: [0xffd0a0, 0], key: [0xffdcb4, 0.65],
     exposure: 1.5, shadow: [1.0, 0.97, 1.02], high: [1.18, 1.0, 0.78], sat: 1.08, lift: 0.01, vignette: 0.6, rain: false, wet: false, haze: 0, rim: [0xffc480, 0.24], env: 0.6 },

@@ -9,7 +9,8 @@ import * as TX from './textures';
  * - `Batch` collects transformed geometries per material and merges them → few draw calls.
  * - `LightSpot` is a light *descriptor*; the LightPool turns the nearest ones into real lights.
  */
-export interface LightSpot { x: number; y: number; z: number; color: number; intensity: number; distance: number; flicker?: boolean; cone?: boolean; on?: boolean }
+export interface LightSpot { x: number; y: number; z: number; color: number; intensity: number; distance: number; flicker?: boolean; cone?: boolean; on?: boolean;
+  /** cone lights: aim point (default: down and toward the camera) */ aim?: { x: number; y: number; z: number }; angle?: number }
 
 export function worldUV(g: THREE.BufferGeometry, metersPerTile = 2): THREE.BufferGeometry {
   const p = g.getAttribute('position') as THREE.BufferAttribute;

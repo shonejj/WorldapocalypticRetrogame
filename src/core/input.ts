@@ -59,7 +59,8 @@ export function radialDeadzone(x: number, y: number, dead = 0.22): [number, numb
 
 /** One tick's worth of action state handed to the simulation. */
 /** aimX: world x under the mouse (PC aiming); aimDir: right-stick facing (gamepad). */
-export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number; aimX?: number; aimDir?: number; /** interiors: + = toward the camera */ moveY?: number }
+export interface InputFrame { held: Set<Action>; pressed: Set<Action>; moveX: number; aimX?: number; aimDir?: number; /** interiors: + = toward the camera */ moveY?: number;
+  /** 3D houses: A/D strafe, ←/→ or right stick turn */ strafe?: number; turn?: number }
 
 const BUFFER_MS = 130;
 
@@ -174,6 +175,8 @@ export class Input {
     const out: InputFrame = { held, pressed, moveX, moveY: this.touchMoveY || (Math.abs(py) > 0.15 ? py : (k('KeyS') || k('ArrowDown') ? 1 : 0) - (k('KeyW') || k('ArrowUp') ? 1 : 0)) };
     if (this.device === 'keyboard' && this.ptr && this.toWorldX) out.aimX = this.toWorldX(this.ptr.x, this.ptr.y);
     const rx = this.pad.axes[2] ?? 0;
+    out.strafe = (k('KeyD') ? 1 : 0) - (k('KeyA') ? 1 : 0) || (Math.abs(stick) > 0.15 ? stick : 0) || this.touchMoveX;
+    out.turn = (k('ArrowRight') ? 1 : 0) - (k('ArrowLeft') ? 1 : 0) || (Math.abs(rx) > 0.15 ? rx : 0);
     if (this.device === 'gamepad' && Math.abs(rx) > 0.5) out.aimDir = Math.sign(rx);
     return out;
   }

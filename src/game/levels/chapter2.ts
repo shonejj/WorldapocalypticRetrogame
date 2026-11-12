@@ -33,6 +33,7 @@ export const CHAPTER2: LevelDef = {
     { x: 163, kind: 'barrel' }, { x: 174, kind: 'crate' }, { x: 174.8, kind: 'crate' }, { x: 183, kind: 'barrier' },
   ],
   caches: [
+    { id: 'c2_house_farm', x: 104, label: 'Go into the boarded-up house', house: 'h_farm', time: 0 },
     { id: 'c2_sedan', x: 3.6, label: 'Search the sedan', style: 'car', loot: { ammo_9mm: 10, cloth: 2 }, time: 1.3, noise: 3 },
     { id: 'c2_diner', x: 20, label: `Enter ${WORLD_NAMES.dinerName}`, room: 'r_diner', time: 0 },
     { id: 'c2_gas', x: 57, label: 'Enter the gas station', room: 'r_gas', time: 0 },
@@ -71,12 +72,12 @@ export const CHAPTER2: LevelDef = {
   ],
   checkpoints: [32, 70, 108, 156],
   beats: [
-    { id: 'road', x0: -12, x1: 12, type: 'teach', intensity: 0.15, ink: 'road_start' },
+    { id: 'road', x0: -12, x1: 12, type: 'teach', intensity: 0.15, ink: 'road_start', cam: { mode: 'flat' } },
     { id: 'diner', x0: 12, x1: 44, type: 'tension', intensity: 0.4, ink: 'bark_diner' },
     { id: 'gas', x0: 44, x1: 78, type: 'explore', intensity: 0.3, ink: 'bark_gas', cam: { zoom: 1.08 } },
     { id: 'motel', x0: 78, x1: 110, type: 'tension', intensity: 0.5, ink: 'bark_motel' },
     { id: 'pileup', x0: 110, x1: 154, type: 'combat', intensity: 0.8, ink: 'pileup', title: 'The pile-up', cam: { zoom: 1.15, lift: 0.3 } },
-    { id: 'rest', x0: 154, x1: 166, type: 'rest', intensity: 0.25, ink: 'bark_checkpoint' },
+    { id: 'rest', x0: 154, x1: 166, type: 'rest', intensity: 0.25, ink: 'bark_checkpoint', cam: { mode: 'iso' } },
     { id: 'gate', x0: 166, x1: 196, type: 'climax', intensity: 1, title: 'Checkpoint 9', cam: { zoom: 1.2, lift: 0.5 } },
   ],
   objectives: [{ id: 'o_fuel', text: 'Find fuel for the checkpoint gate' }, { id: 'o_warden', text: 'Get past whatever guards the line' }, { id: 'o_gate', text: 'Open the quarantine gate' }],

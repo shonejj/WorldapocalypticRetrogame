@@ -7,7 +7,7 @@
       "id": "chars.quaternius",
       "kind": "skinned-models",
       "source": "public/models/chars/*.glb",
-      "origin": "Quaternius — Modular Character Outfits (peasant m/f), Universal Base Characters (face, eyes, eyebrows), hairstyles, Universal Animation Library 1 (26 clips), via github.com/kirbycope/godot-3d-player-controller-v2",
+      "origin": "Quaternius \u2014 Modular Character Outfits (peasant m/f), Universal Base Characters (face, eyes, eyebrows), hairstyles, Universal Animation Library 1 (26 clips), via github.com/kirbycope/godot-3d-player-controller-v2",
       "license": "CC0-1.0",
       "licenseFile": "public/models/chars/LICENSE-*.txt",
       "notes": "Assembled per survivor in src/art/skinned.ts (outfit + face cut from the base body + hair on Head); textures downsized to 512 px; plain float vertices.",
@@ -377,6 +377,20 @@
       ],
       "notes": "Generative chord-loop themes (pad + pluck) on the adaptive-music clock; fully synthesised.",
       "status": "approved"
+    },
+    {
+      "id": "houses-3d",
+      "kind": "3d-interior",
+      "source": "src/house/house.ts + src/house/plans.ts",
+      "status": "approved",
+      "notes": "grid floor plans built from merged boxes in code (walls, windows, furniture, hinged doors); pooled lights incl. flashlight cone"
+    },
+    {
+      "id": "minigames",
+      "kind": "ui-canvas",
+      "source": "src/ui/minigames.ts",
+      "status": "approved",
+      "notes": "192x128 canvas drawn per frame, scaled with nearest-neighbour"
     }
   ]
 }
