@@ -172,14 +172,6 @@ export function buildRoom(kind: RoomKind, X: number, w: number, seed: number, ou
     B.add(M.cloth(0x8a7a5a), box(0.8, 0.14, 0.6, X + 7.4, 0.07, -0.9, { rotY: 0.3 }));                      // floor cushion
     for (let k = 0; k < 4; k++) B.add(M.paint(R.pick([0x6a3a2a, 0x2a4a5a, 0x7a6a3a]), 0.8), box(0.3, 0.05, 0.22, X + 9.3, 0.03 + k * 0.05, -1.6, { rotY: R.range(-0.3, 0.3) }));
   }
-  // near-foreground silhouettes (between lens and lane): depth, and a frame for the bottom corners
-  const sil = M.silhouette(0x040506);
-  for (let dx = R.range(1, 3); dx < w - 1; dx += R.range(6, 10)) {
-    const k = R.int(0, 2);
-    if (k === 0) B.add(sil, box(0.7, 0.34, 0.4, X + dx, 0.17, 2.3), box(0.4, 0.2, 0.4, X + dx + 0.1, 0.44, 2.3));
-    else if (k === 1) B.add(sil, box(0.4, 0.05, 0.4, X + dx, 0.4, 2.3), box(0.05, 0.4, 0.05, X + dx - 0.17, 0.2, 2.3), box(0.05, 0.4, 0.05, X + dx + 0.17, 0.2, 2.3));
-    else B.add(sil, cyl(0.2, 0.2, 0.45, X + dx, 0.22, 2.3, 10));
-  }
   g.add(B.build({ castShadow: true, receiveShadow: true }));
   return { group: g, lights, height: H };
 }

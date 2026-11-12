@@ -114,6 +114,7 @@ export const SURVIVORS: SurvivorDef[] = [
 export type InfectedType = 'common' | 'runner' | 'brute' | 'crawler' | 'screamer' | 'hound' | 'warden' | 'host';
 export interface InfectedDef { name: string; hp: number; walk: number; chase: number; damage: number; reach: number; windup: number; cooldown: number; sight: number; hearing: number; scale: number; gait: Gait; poise: number; density: number;
   /** standing height as a fraction of a person (crawlers and hounds are low targets) */ height?: number;
+  /** bosses: fraction of damage that gets through unless the boss is exposed (after a charge hits a wall) */ armor?: number;
   /** body the view borrows (bosses reuse the brute's mutations at a larger scale) */ body?: 'brute';
   /** boss behaviours: a telegraphed charge, a ground slam that hits everyone in reach, waves of hosts called at health thresholds */
   boss?: { title: string; charge?: boolean; slam?: boolean; summon?: InfectedType[] } }
@@ -123,11 +124,11 @@ export const INFECTED: Record<InfectedType, InfectedDef> = {
   crawler: { name: 'Crawler', hp: 40, walk: 0.5, chase: 1.5, damage: 11, reach: 0.95, windup: 0.45, cooldown: 1.0, sight: 6, hearing: 1.3, scale: 1, gait: 'crawl', poise: 0.9, density: 0.7, height: 0.4 },
   screamer: { name: 'Screamer', hp: 55, walk: 0.55, chase: 0.9, damage: 8, reach: 0.9, windup: 0.5, cooldown: 1.2, sight: 13, hearing: 1.5, scale: 1.04, gait: 'scream', poise: 0.9, density: 0.85 },
   hound: { name: 'Hound', hp: 50, walk: 1.3, chase: 5.8, damage: 14, reach: 1.15, windup: 0.32, cooldown: 0.7, sight: 11, hearing: 1.7, scale: 1, gait: 'hound', poise: 0.7, density: 0.9, height: 0.5 },
-  warden: { name: 'The Warden', hp: 900, walk: 0.7, chase: 1.7, damage: 28, reach: 1.5, windup: 0.8, cooldown: 1.5, sight: 14, hearing: 1.2, scale: 1.45, gait: 'brute', poise: 0.12, density: 1.8, body: 'brute',
+  warden: { name: 'The Warden', hp: 2600, walk: 0.7, chase: 1.7, damage: 28, reach: 1.5, windup: 0.8, cooldown: 1.5, sight: 14, hearing: 1.2, scale: 1.45, gait: 'brute', poise: 0.12, density: 1.8, body: 'brute', armor: 0.12,
     boss: { title: 'THE WARDEN — what is left of the checkpoint sergeant', charge: true } },
-  host: { name: 'The Host', hp: 1500, walk: 0.8, chase: 1.9, damage: 30, reach: 1.9, windup: 0.9, cooldown: 1.4, sight: 20, hearing: 1.5, scale: 1.7, gait: 'brute', poise: 0.08, density: 2.2, body: 'brute',
+  host: { name: 'The Host', hp: 4200, walk: 0.8, chase: 1.9, damage: 30, reach: 1.9, windup: 0.9, cooldown: 1.4, sight: 20, hearing: 1.5, scale: 1.7, gait: 'brute', poise: 0.08, density: 2.2, body: 'brute', armor: 0.12,
     boss: { title: 'THE HOST — patient zero', charge: true, slam: true, summon: ['common', 'runner', 'common'] } },
-  brute: { name: 'Bloated Brute', hp: 520, walk: 0.6, chase: 1.5, damage: 32, reach: 1.4, windup: 0.95, cooldown: 1.8, sight: 8, hearing: 0.8, scale: 1.35, gait: 'brute', poise: 0.2, density: 1.6, boss: { title: 'BLOATED BRUTE' } },
+  brute: { name: 'Bloated Brute', hp: 1800, walk: 0.6, chase: 1.5, damage: 32, reach: 1.4, windup: 0.95, cooldown: 1.8, sight: 8, hearing: 0.8, scale: 1.35, gait: 'brute', poise: 0.2, density: 1.6, armor: 0.3, boss: { title: 'BLOATED BRUTE — it never left the relay', charge: true } },
 };
 
 /** Noise radii in metres (infected within radius investigate). */

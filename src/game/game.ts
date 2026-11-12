@@ -258,7 +258,7 @@ export class Game implements Host, AIWorld {
     if (a === this.leader) { this.lastShot = this.time; this.cam.addTrauma(w.trauma); this.shotsFired++; }
     for (let k = 0; k < w.pellets; k++) {
       const ang = (this.rng.next() - 0.5) * 2 * w.spread * (a.aimed ? 1 : 1.8);
-      this.hitscan(a, m.x, m.y, a.facing, ang, w.range, w.damage, w.knock, m.z);
+      this.hitscan(a, m.x, m.y, a.facing, ang, w.range, w.damage * (a === this.leader ? 1 : 0.55), w.knock, m.z);   // the squad backs you up; it does not win the fight for you
     }
   }
 
@@ -681,7 +681,14 @@ export class Game implements Host, AIWorld {
     this.wet.dispose(); this.haze.dispose();
     // free this level's GPU geometry (merged batches, clones) so retries do not grow memory;
     // shared materials/textures stay cached and simply re-upload if used again
-    this.r.scene.traverse((o) => { const m = o as THREE.Mesh; if (m.geometry && !(m.geometry as { userData?: { keep?: boolean } }).userData?.keep) m.geometry.dispose(); });
+    const tex = new Set<THREE.Texture>();
+    this.r.scene.traverse((o) => {
+      const m = o as THREE.Mesh; if (m.geometry && !(m.geometry as { userData?: { keep?: boolean } }).userData?.keep) m.geometry.dispose();
+      const mats = m.material ? (Array.isArray(m.material) ? m.material : [m.material]) : [];
+      for (const mat of mats) for (const v of Object.values(mat)) if (v instanceof THREE.Texture && !v.userData.keep) tex.add(v);
+    });
+    // per-level canvas textures (signs, posters, labels); the shared PBR library is marked `keep`
+    tex.forEach((t) => t.dispose());
     this.r.scene.clear();
     this.ev.clear();
   }

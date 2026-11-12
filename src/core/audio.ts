@@ -85,6 +85,9 @@ export class AudioEngine {
   /** Adaptive music driver: 0 calm, ~0.5 suspicion, 1 combat. */
   setIntensity(v: number): void { this.intensity = Math.max(0, Math.min(1, v)); }
 
+  /** Background tab: stop the audio clock entirely (no work, nothing piles up). */
+  sleep(on: boolean): void { if (!this.ctx) return; void (on ? this.ctx.suspend() : this.ctx.resume()); }
+
   private noise(dest: AudioNode, loop = false, rate = 1): AudioBufferSourceNode {
     const s = this.ctx!.createBufferSource(); s.buffer = this.noiseBuf; s.loop = loop; s.playbackRate.value = rate; s.connect(dest); return s;
   }
@@ -164,6 +167,9 @@ export class AudioEngine {
     this.layers.tension.gain.setTargetAtTime(Math.max(0, Math.min(1, (I - 0.15) * 2)) * 0.9, t, 0.8);
     this.layers.combat.gain.setTargetAtTime(I > 0.65 ? 0.9 : 0, t, I > 0.65 ? 0.4 : 2.5);
     const spb = 60 / (84 + I * 30);
+    // after a stall (tab in the background, a debugger, a long load) never try to catch up: a backlog of
+    // thousands of scheduled notes at once can take the whole audio thread — and the browser — down
+    if (this.nextBeat < t - 0.5) this.nextBeat = t + 0.05;
     while (this.nextBeat < t + 0.15) {
       const bt = this.nextBeat, b = this.beat++ % 16;
       // tension ostinato: two high notes (E5/F5 — semitone unease)

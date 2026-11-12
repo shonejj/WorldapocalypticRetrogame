@@ -73,10 +73,10 @@ export class Actor {
 
   damage(amount: number, dir: number, knock: number): void {
     if (!this.alive) return;
-    if (this.exposed > 0) amount *= 1.6;
+    if (this.exposed > 0) amount *= 1.6; else if (this.infected?.armor) amount *= this.infected.armor;
     this.hp -= amount; this.hurtT = 1;
     const poise = this.infected?.poise ?? 1;
-    this.knock += dir * knock * poise * 0.6;
+    if (!this.isBoss) this.knock += dir * knock * poise * 0.6;      // bosses are not pushed around by gunfire
     if (this.infected && poise > 0.5) this.stun = Math.max(this.stun, 0.2 * poise);
     if (this.team === 'squad' && amount >= 8 && Math.random() < 0.35) this.bleed = Math.min(1, this.bleed + 0.5);
     if (this.hp <= 0) { this.hp = 0; this.alive = false; }

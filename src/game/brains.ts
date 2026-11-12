@@ -1,5 +1,5 @@
 import { idle, type Actor, type Intent } from './actor';
-import { ReactiveSelector, Sequence, Condition, Action, Status, type Node } from '../ai/bt';
+import { ReactiveSelector, When, Action, Status, type Node } from '../ai/bt';
 import { Reasoner, curves } from '../ai/utility';
 import { WEAPONS, type InfectedType } from './data';
 import type { InputFrame } from '../core/input';
@@ -138,22 +138,22 @@ export class InfectedBrain implements Brain {
   constructor() {
     const set = (a: Actor, s: Actor['state']) => { a.state = s; a.stateT = 0; };
     this.tree = new ReactiveSelector<ZBoard>([
-      new Sequence([new Condition((b) => b.a.stun > 0, 'stunned'), new Action(() => Status.Running, 'reel')]),
-      new Sequence([new Condition((b) => b.a.state === 'dormant' || b.a.state === 'waking', 'dormant?'), new Action((b) => {
+      new When((b) => b.a.stun > 0, new Action(() => Status.Running, 'reel'), 'stunned'),
+      new When((b) => b.a.state === 'dormant' || b.a.state === 'waking', new Action((b) => {
         if (b.a.state === 'dormant' && (b.a.suspicion > 0.6 || (b.seen && b.seenD < 1.6))) set(b.a, 'waking');
         if (b.a.state === 'waking' && b.a.stateT > 0.9) {
           if (b.seen) { b.a.targetId = b.seen.id; set(b.a, 'chase'); b.w.cry(b.a); } else set(b.a, 'investigate');
         }
         return Status.Running;
-      }, 'rest/rise')]),
-      new Sequence([new Condition((b) => b.a.state === 'chase', 'hunting?'), new Action((b) => this.chase(b), 'chase')]),
-      new Sequence([new Condition((b) => b.a.state === 'investigate', 'curious?'), new Action((b) => {
+      }, 'rest/rise'), 'dormant?'),
+      new When((b) => b.a.state === 'chase', new Action((b) => this.chase(b), 'chase'), 'hunting?'),
+      new When((b) => b.a.state === 'investigate', new Action((b) => {
         const dx = b.a.investigateX - b.a.x;
         if (Math.abs(dx) > 0.5) { b.out.moveX = Math.sign(dx) * 0.9; b.out.run = b.a.suspicion > 0.7 && b.a.type !== 'runner'; return Status.Running; }
         if (b.a.stateT > 4) { set(b.a, 'wander'); return Status.Success; }
         if (Math.floor(b.time * 0.8) % 2) b.out.faceX = -b.a.facing;      // look around
         return Status.Running;
-      }, 'investigate')]),
+      }, 'investigate'), 'curious?'),
       new Action((b) => {
         if (b.a.state === 'idle') { if (Math.floor(b.time / 3 + b.a.id) % 5 === 0) b.out.faceX = -b.a.facing; return Status.Running; }
         this.wanderT -= b.dt;
@@ -232,6 +232,7 @@ export class InfectedBrain implements Brain {
 
   think(a: Actor, w: AIWorld, dt: number): Intent {
     a.stateT += dt;
+    if (a.infected?.gait !== 'scream') a.screamT = Math.max(0, a.screamT - dt);
     this.groanT -= dt;
     if (this.groanT <= 0) { this.groanT = 5 + w.rng.range(0, 9); if (a.state !== 'dormant') w.groan(a); }
     const p = this.perceive(a, w, dt);

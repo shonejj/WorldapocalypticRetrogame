@@ -41,6 +41,20 @@ export class Sequence<B> extends Composite<B> {
   }
 }
 
+/**
+ * Guarded branch: the condition is re-checked EVERY tick (a memory Sequence would only check it
+ * once and then keep resuming the running action forever). Fails — and resets the child — the
+ * moment the guard stops holding.
+ */
+export class When<B> extends Node<B> {
+  constructor(private test: (bb: B) => boolean, private child: Node<B>, readonly label = '') { super(); }
+  tick(bb: B, dt: number): Status {
+    if (!this.test(bb)) { this.child.reset(); return Status.Failure; }
+    return this.child.tick(bb, dt);
+  }
+  reset(): void { this.child.reset(); }
+}
+
 /** OR with priorities re-evaluated every tick; abandoning a lower branch resets it. */
 export class ReactiveSelector<B> extends Composite<B> {
   private running = -1;

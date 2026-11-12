@@ -52,7 +52,7 @@ class App {
   offline = !!navigator.serviceWorker?.controller;
   private fps = h('div.fps.hidden'); private fpsAcc = 0; private fpsN = 0;
   private perf = { t: 0, n: 0, done: false };
-  private carry: Set<string> | null = null;
+  private carry: Set<string> | null = null; private lost = false;
   private loading = false;
 
   constructor() {
@@ -60,6 +60,15 @@ class App {
     (window as unknown as { __app: App }).__app = this;
     document.body.append(this.fps);
     this.r.renderer.info.autoReset = false;
+    // a GPU reset must never take the tab down with it: stop drawing, drop to low quality, offer a resume
+    this.r.canvas.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault(); this.lost = true;
+      this.autosave();
+      this.settings.quality = 'low'; this.settings.autoQuality = false; saveSettings(this.settings);
+      const el = document.createElement('div'); el.className = 'gpu-lost';
+      el.innerHTML = '<b>The graphics driver reset.</b><span>Your progress is saved. Quality was lowered.</span>';
+      const b = document.createElement('button'); b.textContent = 'Reload'; b.onclick = () => location.reload(); el.append(b); document.body.append(el);
+    });
     this.screens.onPop = () => this.input.flush();
     this.timer.connect(document);
     engine.pauseOnDocumentHidden = true;
@@ -67,7 +76,7 @@ class App {
     this.input.toWorldX = (cx, cy) => this.r.toWorldX(cx, cy);
     this.apply(this.settings);
     addEventListener('pointerdown', () => audio.unlock()); addEventListener('keydown', () => audio.unlock());
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.game && !this.screens.open) this.pause(); });
+    document.addEventListener('visibilitychange', () => { audio.sleep(document.hidden); if (document.hidden && this.game && !this.screens.open) this.pause(); });
     addEventListener('pagehide', () => this.autosave());
     this.r.renderer.setAnimationLoop(() => this.frame());
     // phones: the game is landscape-only; in portrait show a rotate screen with a fullscreen button
@@ -283,6 +292,7 @@ class App {
 
   // ---------------------------------------------------------------- frame loop
   private frame(): void {
+    if (this.lost) return;
     this.timer.update();
     this.r.renderer.info.reset();
     const dt = Math.min(Math.max(this.timer.getDelta(), 0), 0.1), now = performance.now();

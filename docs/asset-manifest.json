@@ -1,13 +1,13 @@
 {
   "project": "The Last Frequency",
-  "version": 2,
+  "version": 3,
   "policy": "World art and audio are authored in code (MIT). Third-party assets are allowed only with a permissive licence (CC0/MIT), bundled locally for offline play, and listed here with source and licence.",
   "assets": [
     {
       "id": "chars.quaternius",
       "kind": "skinned-models",
       "source": "public/models/chars/*.glb",
-      "origin": "Quaternius \u2014 Modular Character Outfits (peasant m/f), Universal Base Characters (face, eyes, eyebrows), hairstyles, Universal Animation Library 1 (26 clips), via github.com/kirbycope/godot-3d-player-controller-v2",
+      "origin": "Quaternius — Modular Character Outfits (peasant m/f), Universal Base Characters (face, eyes, eyebrows), hairstyles, Universal Animation Library 1 (26 clips), via github.com/kirbycope/godot-3d-player-controller-v2",
       "license": "CC0-1.0",
       "licenseFile": "public/models/chars/LICENSE-*.txt",
       "notes": "Assembled per survivor in src/art/skinned.ts (outfit + face cut from the base body + hair on Head); textures downsized to 512 px; plain float vertices.",
@@ -277,6 +277,105 @@
       "kind": "audio",
       "source": "src/core/audio.ts",
       "note": "fully synthesised, see audio-design",
+      "status": "approved"
+    },
+    {
+      "id": "art.panels.*",
+      "kind": "illustration-family",
+      "source": "src/art/panels.ts",
+      "variants": [
+        "lab_night",
+        "city_fall",
+        "hosts",
+        "radio_room",
+        "four_walk",
+        "relay",
+        "safehouse",
+        "road",
+        "gate",
+        "facility",
+        "end_cost",
+        "end_silence",
+        "end_true"
+      ],
+      "notes": "384x216 pixel-art storyboard panels painted in code (silhouette layers, fog, ordered-dither posterise); used by cutscenes and the title screen.",
+      "status": "approved"
+    },
+    {
+      "id": "art.portraits.*",
+      "kind": "ui-art",
+      "source": "src/art/portraits.ts",
+      "variants": [
+        "REED",
+        "MAYA",
+        "MILLER",
+        "IRIS",
+        "WREN",
+        "RADIO"
+      ],
+      "notes": "72 px speaker portraits rendered at load from the in-game character models (chars.quaternius), posterised and outlined.",
+      "status": "approved"
+    },
+    {
+      "id": "mesh.room.*",
+      "kind": "mesh-family",
+      "source": "src/art/rooms.ts",
+      "variants": [
+        "store",
+        "pharmacy",
+        "apartment",
+        "garage",
+        "bus",
+        "diner",
+        "motel",
+        "gas",
+        "booth",
+        "lab",
+        "safehouse"
+      ],
+      "notes": "Side-on cut-away interiors; one Batch per room.",
+      "status": "approved"
+    },
+    {
+      "id": "mesh.backdrop.sets",
+      "kind": "mesh-family",
+      "source": "src/art/sets.ts",
+      "variants": [
+        "road",
+        "facility"
+      ],
+      "notes": "Bare-tree ranks, pylons, hills, lab complex and broadcast mast as unlit fog-bound silhouettes.",
+      "status": "approved"
+    },
+    {
+      "id": "look.moods",
+      "kind": "grade",
+      "source": "src/render/mood.ts, src/render/haze.ts",
+      "variants": [
+        "rainNight",
+        "fogDawn",
+        "dusk",
+        "lab",
+        "room",
+        "camp"
+      ],
+      "notes": "Per-place fog, sky, light rig, colour grade and fog sheets.",
+      "status": "approved"
+    },
+    {
+      "id": "audio.themes",
+      "kind": "audio",
+      "source": "src/core/audio.ts",
+      "variants": [
+        "title",
+        "street",
+        "road",
+        "lab",
+        "camp",
+        "ending",
+        "boss"
+      ],
+      "notes": "Generative chord-loop themes (pad + pluck) on the adaptive-music clock; fully synthesised.",
       "status": "approved"
     }
   ]

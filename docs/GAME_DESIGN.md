@@ -29,6 +29,11 @@ Infected (slow, groups, sight + hearing) · dormant infected (lie still until cl
 | Breather | rest | 0.2 | heal, eat, drink, checkpoint |
 | Relay 7 | climax | 1.0 | brute + restore the relay (needs fuse) |
 
+## Campaign (v0.3)
+Prologue → Ch.1 Market Street → safehouse → Ch.2 The Long Road → safehouse → Ch.3 Genova Labs → one of three endings.
+Bosses: Bloated Brute, the Warden, the Host (armoured until a charge leaves them exposed; the Host calls waves at ⅔ and ⅓).
+Progression: seven upgrades bought with scrap at any workbench. See docs/OVERHAUL.md.
+
 ## Status
 | System | v0.2 | Next |
 |---|---|---|

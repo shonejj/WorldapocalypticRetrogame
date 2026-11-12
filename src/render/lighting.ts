@@ -39,7 +39,7 @@ export class LightPool {
     for (let i = 0; i < POOL_POINT; i++) { const p = new THREE.PointLight(0xffffff, 0, 10, 2); this.points.push(p); this.group.add(p); }
     for (let i = 0; i < POOL_SPOT; i++) {
       const s = new THREE.SpotLight(0xffc887, 0, 16, 0.75, 0.6, 1.6);
-      s.castShadow = shadows && i === 0; s.shadow.mapSize.set(1024, 1024); s.shadow.bias = -0.0008;
+      s.castShadow = false;   // one shadow map (the moon) is the budget: every shadowed light re-renders the scene s.shadow.bias = -0.0008;
       this.spots.push(s); this.group.add(s, s.target);
     }
     this.flashLight = new THREE.PointLight(0xffd8a0, 0, 9, 2); this.group.add(this.flashLight);

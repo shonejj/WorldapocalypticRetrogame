@@ -22,38 +22,43 @@ Engine stays three.js + TypeScript (the repo ships as an offline PWA on GitHub P
 rewrite would throw away every system and the deploy pipeline). The work is direction and content.
 
 ### M1 — Look and feel
-- [ ] Mood system: per-place palette (fog, sky, light, grade, weather) — rain night, fog dawn, dusk, cold lab, warm candle-lit rooms
-- [ ] Layered fog sheets + silhouette depth layers (bare trees, pylons, billboards) like the reference
-- [ ] Readable characters: stronger rim/fill, no film grain, cleaner pixel pass
-- [ ] Cinematic letterbox during story moments
-- [ ] HUD pass: smaller, quieter, nothing over the action
+- [x] Mood system: per-place palette (fog, sky, light, grade, weather) — rain night, fog dawn, dusk, cold lab, warm candle-lit rooms
+- [x] Layered fog sheets + silhouette depth layers (bare trees, pylons, billboards) like the reference
+- [x] Readable characters: stronger rim/fill, no film grain, cleaner pixel pass
+- [x] Cinematic letterbox during story moments
+- [x] HUD pass: smaller, quieter, nothing over the action
 
 ### M2 — Story presentation
-- [ ] Storyboard cutscenes: hand-authored pixel-art panels with captions (prologue, chapter cards, interludes, endings)
-- [ ] Conversation UI: speaker portraits (rendered from the real character models), typewriter, press to advance, choices in the box; the world waits
-- [ ] Barks stay as subtitles during play
+- [x] Storyboard cutscenes: hand-authored pixel-art panels with captions (prologue, chapter cards, interludes, endings)
+- [x] Conversation UI: speaker portraits (rendered from the real character models), typewriter, press to advance, choices in the box; the world waits
+- [x] Barks stay as subtitles during play
 
 ### M3 — Places
-- [ ] Interiors rebuilt as side-on cut-away rooms in the same simulation: the whole squad enters, infected live inside, same stealth and combat
-- [ ] Lore notes readable in a proper note view; collected notes matter for the ending
+- [x] Interiors rebuilt as side-on cut-away rooms in the same simulation: the whole squad enters, infected live inside, same stealth and combat
+- [x] Lore notes readable in a proper note view; collected notes matter for the ending
 
 ### M4 — Campaign
-- [ ] Chapter 1 — Market Street (rain, night) — tuned
-- [ ] Safehouse scenes between chapters: talk to the squad (backstory), upgrade, rest
-- [ ] Chapter 2 — The Long Road (fog, dawn): highway, gas station, motel, quarantine checkpoint; boss: the Warden
-- [ ] Chapter 3 — Genova Labs (dusk → cold interior); final boss: the Host (three phases)
-- [ ] Three endings incl. a true ending earned through trust and the research notes
-- [ ] Campaign saves: chapter, stash, party, upgrades and story state carry over
+- [x] Chapter 1 — Market Street (rain, night) — tuned
+- [x] Safehouse scenes between chapters: talk to the squad (backstory), upgrade, rest
+- [x] Chapter 2 — The Long Road (fog, dawn): highway, gas station, motel, quarantine checkpoint; boss: the Warden
+- [x] Chapter 3 — Genova Labs (dusk → cold interior); final boss: the Host (three phases)
+- [x] Three endings incl. a true ending earned through trust and the research notes
+- [x] Campaign saves: chapter, stash, party, upgrades and story state carry over
 
 ### M5 — Depth
-- [ ] Boss health bar, telegraphed attacks, phases
-- [ ] Upgrades bought with scrap: weapons (damage, magazine, suppressor) and squad (pack, health, medicine)
-- [ ] Chapter results screen
+- [x] Boss health bar, telegraphed attacks, phases
+- [x] Upgrades bought with scrap: weapons (damage, magazine, suppressor) and squad (pack, health, medicine)
+- [x] Chapter results screen
 
 ### M6 — Sound
-- [ ] Themes: title, street, road, lab, safehouse, boss, ending — on the existing adaptive layers
-- [ ] Ambience per mood (rain, wind, room tone, fire crackle)
+- [x] Themes: title, street, road, lab, safehouse, boss, ending — on the existing adaptive layers
+- [x] Ambience per mood (rain, wind, room tone, fire crackle)
 
 ### M7 — Quality
-- [ ] Automated playthrough bot (Playwright) through every chapter; zero console errors
-- [ ] `npm run check` green; docs and asset manifest updated
+- [x] Automated playthrough bot (Playwright) through every chapter; zero console errors
+- [x] `npm run check` green; docs and asset manifest updated
+
+## Status (v0.3.0)
+Everything above is implemented and verified by `npm run check` and the headless campaign run. Still open, in order of value:
+hand-drawn sprite characters (the cast is still 3D models through the pixel pass), per-chapter enemy variants, a dodge move,
+recorded audio, multiplayer.

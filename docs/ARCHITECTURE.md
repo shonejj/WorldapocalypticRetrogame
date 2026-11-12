@@ -4,21 +4,24 @@ Rebuilt from scratch in v0.2 using the vendored game-dev skills (`.claude/skills
 
 ```
 src/config/game.ts        title + in-world names (single source of truth)
-src/main.ts               App: screen flow, frame loop (setAnimationLoop + THREE.Timer), dialogue flow, adaptive quality
+src/main.ts               App: campaign flow (storyboard → level → results → next), frame loop (setAnimationLoop + THREE.Timer), conversations/barks, adaptive quality
 src/core/                 clock (fixed 60 Hz + hit-stop), input (actions/bindings/buffer/deadzone/rebind),
                           audio (buses in dB, ducking, adaptive music, SFX variation), storage (atomic writes, migrations), events, math
 src/ai/                   bt.ts (behavior-tree runtime), utility.ts (curves, compensated scoring, hysteresis)
 src/game/                 actor (shared Intent-driven rules), brains (player / squad utility AI / infected BT + perception),
                           rig (FK + procedural animation), data (items, weapons, survivors, infected, recipes), inventory (atomic crafting),
                           save (versioned schema), dialogue (inkjs runner), worldBuilder, game (simulation, combat, noise, needs, beats)
-src/game/levels/          chapter1.ts — beats, gating, encounters (data)
-src/story/chapter1.ink    Ink script, compiled by build/ink.ts
+src/game/campaign.ts      play order: chapters with a safehouse between them
+src/game/levels/          chapter1–3.ts, camps.ts — beats, rooms, gating, encounters, goals (data)
+src/story/story.ink       the whole campaign in Ink (bark_* knots are subtitles; the rest are conversations), compiled by build/ink.ts
+src/story/storyboards.ts  cutscene scripts: panels + captions
 src/physics/              world (categories, raycast, kicks), ragdoll (from rig FK)
-src/art/                  textures (procedural PBR maps), kit (merging, materials), buildings, street, props, vehicles, nature, characters, weapons
-src/render/               renderer (PBR, PMREM env, fog, composer: pixel/bloom/grade/output), lighting (light pool), camera (deadzone, look-ahead, trauma shake), fx, weather
-src/ui/                   screens (stack + focus nav), hud (event-driven), menus, touch, settings, style.css
+src/art/                  textures (procedural PBR maps), kit (merging, materials), buildings, street, props, vehicles, nature, characters, weapons,
+                          rooms (cut-away interiors), sets (road / facility backdrops), panels (painted storyboards), portraits (rendered from the models)
+src/render/               renderer (PBR, PMREM env, fog, composer: pixel/bloom/grade/output), mood (per-place palette), haze (fog sheets), lighting (light pool), camera (deadzone, look-ahead, trauma shake), fx, weather
+src/ui/                   screens (stack + focus nav), hud (event-driven), story (cutscene, conversation, note), menus, touch, settings, style.css
 build/                    offline-pwa (manifest + sw.js precache), ink (compile .ink)
-tests/                    vitest: rig, ragdoll, BT/utility/perception, stash/crafting, saves, input/clock, Ink
+tests/                    vitest: rig, ragdoll, BT/utility/perception, stash/crafting, saves, input/clock, Ink + campaign consistency; e2e/campaign.cjs plays every stage headless
 ```
 
 | Skill | Where it shows up |
@@ -39,3 +42,11 @@ tests/                    vitest: rig, ragdoll, BT/utility/perception, stash/cra
 | `dialogue-systems` | Ink (inkjs) compiled at build time; variables persist in saves; choices drive relationships |
 | `level-design` | metrics-first layout; critical path with a crafted-item gate; sawtooth intensity beats |
 | `performance-optimization` | merged static geometry per material, instanced grass/skyline/particles, fixed light pool (no shader recompiles), pooled VFX |
+
+## Places: one simulation, many zones
+A level is the street plus any number of **rooms** (`LevelDef.rooms`). Rooms are built far to the right on the same lane
+(x ≥ 1000) and registered as `Zone`s; actors are clamped to the zone they stand in, so every rule — sight, noise, squad AI,
+ragdolls, bosses — works indoors without a second code path. Walking through a door fades, moves the squad, and swaps the
+`Mood`. A safehouse is a level that *starts* in its room. The level's `goal` (optionally inside a room, optionally guarded by
+a boss or gated by an item) ends it with a conversation; `main.ts` then shows results, plays the outro storyboard and
+starts the next stage with stash, party, upgrades, notes and Ink state carried in the save (v3).

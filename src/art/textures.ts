@@ -44,7 +44,10 @@ function finish(f: Field, opts: { normal?: number; repeat?: number; alpha?: bool
   const toTex = (fill: (d: Uint8ClampedArray) => void, srgb: boolean) => {
     const cv = document.createElement('canvas'); cv.width = cv.height = n;
     const g = cv.getContext('2d')!; const img = g.createImageData(n, n); fill(img.data); g.putImageData(img, 0, 0);
-    const t = new THREE.CanvasTexture(cv);
+    // the scene renders at ≈360 rows: half-resolution maps look identical and use a quarter of the VRAM
+    const h = Math.max(64, n >> 1), small = document.createElement('canvas'); small.width = small.height = h;
+    const sg = small.getContext('2d')!; sg.imageSmoothingQuality = 'high'; sg.drawImage(cv, 0, 0, h, h);
+    const t = new THREE.CanvasTexture(small); t.userData.keep = true;
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 4;
     t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace;
     return t;
