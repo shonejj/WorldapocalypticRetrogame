@@ -67,7 +67,7 @@ still, wants third-person areas inside buildings, minigames, more camera variety
 - [x] Fully 3D houses, third person over the shoulder: floor plans, flashlight, hinged doors, infected that path through rooms, hitscan + shove, searching (one per chapter: apartment, farmhouse, staff quarters)
 - [x] Minigames: lockpick, breaker puzzle, radio tuning
 - [x] Camera variety on the street: isometric stretches and flat long-lens silhouette sections (per beat)
-- [ ] Enemy idle life on the street (feeding, wandering packs) and readability pass
+- [x] Enemy idle life on the street: feeders hunch over bodies, idlers shuffle and turn, wanderers roam, half the sleepers replaced by feeders
 
 ## Status (v0.3.0)
 Everything above is implemented and verified by `npm run check` and the headless campaign run. Still open, in order of value:

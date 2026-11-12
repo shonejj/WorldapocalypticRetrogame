@@ -131,7 +131,7 @@ export class SquadBrain implements Brain {
 interface ZBoard { a: Actor; w: AIWorld; dt: number; time: number; seen: Actor | null; seenD: number; out: Intent }
 
 export class InfectedBrain implements Brain {
-  private wanderT = 0; private wanderDir = 0; private lostT = 0; private screamCd = 0; private groanT = Math.random() * 8;
+  private wanderT = 0; private wanderDir = 0; private feeder: boolean | null = null; private lostT = 0; private screamCd = 0; private groanT = Math.random() * 8;
   private bb!: ZBoard;
   private tree: Node<ZBoard>;
 
@@ -155,12 +155,26 @@ export class InfectedBrain implements Brain {
         return Status.Running;
       }, 'investigate'), 'curious?'),
       new Action((b) => {
-        if (b.a.state === 'idle') { if (Math.floor(b.time / 3 + b.a.id) % 5 === 0) b.out.faceX = -b.a.facing; return Status.Running; }
+        if (b.a.state === 'idle') {
+          // idle is never frozen: feeders stay hunched over a body and jerk their heads up; the rest
+          // sway, shuffle a step or two around where they stand, and turn toward nothing
+          if (this.feeder === null) this.feeder = b.w.rng.chance(0.45) && b.a.infected!.gait !== 'hound';
+          if (this.feeder) { b.out.crouch = Math.floor(b.time * 0.35 + b.a.id) % 4 !== 0; return Status.Running; }
+          this.wanderT -= b.dt;
+          if (this.wanderT <= 0) {
+            this.wanderT = b.w.rng.range(1.2, 3.5);
+            const away = b.a.x - b.a.homeX;
+            this.wanderDir = Math.abs(away) > 1.5 ? -Math.sign(away) : b.w.rng.pick([-1, 0, 0, 1]);
+            if (b.w.rng.chance(0.3)) b.out.faceX = -b.a.facing;
+          }
+          b.out.moveX = this.wanderDir * 0.3;
+          return Status.Running;
+        }
         this.wanderT -= b.dt;
         if (this.wanderT <= 0) {
           this.wanderT = b.w.rng.range(2, 5);
           const away = b.a.x - b.a.homeX;
-          this.wanderDir = Math.abs(away) > 4 ? -Math.sign(away) : b.w.rng.pick([-1, 0, 0, 1]);
+          this.wanderDir = Math.abs(away) > 4 ? -Math.sign(away) : b.w.rng.pick([-1, 0, 1, 1, -1]);
         }
         b.out.moveX = this.wanderDir * 0.6;
         return Status.Running;

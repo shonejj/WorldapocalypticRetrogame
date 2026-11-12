@@ -140,9 +140,9 @@ export class Game implements Host, AIWorld {
       const talk = start?.def?.talks?.find((t) => t.who === a.survivor!.id);
       this.brains.set(a.id, i === this.controlled ? this.player : talk ? new StationBrain(start!.x0 + talk.dx) : new SquadBrain());
     });
-    // infected: the street's, then each room's (same rules, same brains)
+    // infected: the street's, then each room's (same rules, same brains); half the sleepers are feeding instead
     const spawns = [...level.infected, ...this.zones.flatMap((z) => (z.def?.infected ?? []).map((d) => ({ ...d, x: z.x0 + d.dx })))];
-    for (const d of spawns) if (!this.killed.has(d.id)) { const a = this.spawnInfected(d.type, d.x, d.id); a.state = d.state; a.facing = d.facing ?? (this.rng.chance(0.5) ? 1 : -1); }
+    for (const d of spawns) if (!this.killed.has(d.id)) { const a = this.spawnInfected(d.type, d.x, d.id); a.state = d.state === 'dormant' && hashString(d.id) % 2 ? 'idle' : d.state; a.facing = d.facing ?? (this.rng.chance(0.5) ? 1 : -1); }
     // interactables
     const glint = (id: string, x: number) => { const m = lootSpot(hashString(id)); m.position.set(x, 0, -0.95); r.scene.add(m); this.lootSpots.set(id, m); };
     for (const c of level.caches) {

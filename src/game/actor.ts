@@ -91,7 +91,7 @@ export class Actor {
     const dormant = this.team === 'infected' && (this.state === 'dormant' || this.state === 'waking');
 
     // ---- movement (accelerate toward target speed; knockback decays)
-    this.crouching = this.team === 'squad' && it.crouch;
+    this.crouching = it.crouch && (this.team === 'squad' || this.state === 'idle');   // idle infected hunch over what they are eating
     this.running = it.run && !this.crouching && Math.abs(it.moveX) > 0.1;
     let speed = this.survivor ? (this.running ? this.survivor.run : this.survivor.walk * (this.crouching ? 0.55 : 1)) : it.run ? this.infected!.chase : this.infected!.walk;
     if (this.survivor && this.hp / this.maxHp < 0.3) speed *= 0.8;                       // limping when badly hurt
