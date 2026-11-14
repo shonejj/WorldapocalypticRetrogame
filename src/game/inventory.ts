@@ -12,6 +12,7 @@ export class Stash {
   /** How many of `id` fit (stack + weight). */
   room(id: ItemId, extraFree = 0): number {
     const byStack = ITEMS[id].stack - this.count(id);
+    if (ITEMS[id].key) return Math.max(0, byStack);
     const byWeight = Math.floor((this.limit - this.weight + extraFree + 1e-9) / ITEMS[id].weight);
     return Math.max(0, Math.min(byStack, byWeight));
   }

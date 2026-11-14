@@ -20,7 +20,7 @@ export function titleScreen(S: ScreenStack, o: { canContinue: boolean; continueL
   // the painted road into the fog behind the menu, drifting slowly (same panel art as the cutscenes)
   const art = h<'canvas'>('canvas.titleart'); const src = painting('four_walk'); art.width = src.width; art.height = src.height; art.getContext('2d')!.drawImage(src, 0, 0);
   const el = h('div.screen.title', {}, art, h('div.titleshade'), h('div.titlecol', {}, wave, title, h('div.sub', {}, GAME.tagline.toUpperCase()),
-    menu([[o.canContinue ? o.continueLabel : 'Continue', o.onContinue, !o.canContinue], ['New game', o.onNew], ['The squad', o.onSquad], ['Settings', o.onSettings], ['Controls', o.onControls]]),
+    menu([...(o.canContinue ? [[o.continueLabel, o.onContinue] as [string, () => void]] : []), ['New game', o.onNew], ['The squad', o.onSquad], ['Settings', o.onSettings], ['Controls', o.onControls]]),
     h('div.endings', {}, o.endings ? `ENDINGS FOUND ${o.endings} / 3` : '')),
     h('div#netfoot.foot', {}, footText(o.offline)));
   const drift = animate(art, { scale: [1.08, 1.16], x: ['-1.5%', '1.5%'], duration: 40000, ease: 'inOutSine', loop: true, alternate: true });

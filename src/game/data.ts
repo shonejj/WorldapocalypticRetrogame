@@ -5,7 +5,7 @@ import type { Gait, Stance } from './rig';
 
 // ---------------------------------------------------------------- items (data-driven; rpg / survival-crafting)
 export type ItemId = 'ammo_9mm' | 'ammo_shells' | 'ammo_rifle' | 'medkit' | 'bandage' | 'food' | 'water' | 'scrap' | 'cloth' | 'battery' | 'bottle' | 'alcohol' | 'tape' | 'radio_part' | 'fuel';
-export interface ItemDef { name: string; icon: string; weight: number; stack: number; desc: string }
+export interface ItemDef { name: string; icon: string; weight: number; stack: number; desc: string; /** story item: always fits, whatever the pack weighs */ key?: boolean }
 export const ITEMS: Record<ItemId, ItemDef> = {
   ammo_9mm: { name: '9mm rounds', icon: '⁍', weight: 0.01, stack: 120, desc: 'Pistol ammunition.' },
   ammo_shells: { name: '12-gauge shells', icon: '▮', weight: 0.04, stack: 40, desc: 'Shotgun shells.' },
@@ -20,8 +20,8 @@ export const ITEMS: Record<ItemId, ItemDef> = {
   bottle: { name: 'Empty bottle', icon: '◊', weight: 0.25, stack: 6, desc: 'Throw it to make noise and lure infected away.' },
   alcohol: { name: 'Alcohol', icon: '◈', weight: 0.4, stack: 6, desc: 'Disinfectant. Crafting material.' },
   tape: { name: 'Duct tape', icon: '◎', weight: 0.1, stack: 10, desc: 'Fixes almost anything.' },
-  fuel: { name: 'Jerrycan of fuel', icon: '▰', weight: 3, stack: 1, desc: 'Enough to turn over one stubborn motor.' },
-  radio_part: { name: 'Relay fuse', icon: '⌁', weight: 0.2, stack: 3, desc: 'A replacement fuse for a radio relay.' },
+  fuel: { name: 'Jerrycan of fuel', icon: '▰', weight: 3, stack: 1, desc: 'Enough to turn over one stubborn motor.', key: true },
+  radio_part: { name: 'Relay fuse', icon: '⌁', weight: 0.2, stack: 3, desc: 'A replacement fuse for a radio relay.', key: true },
 };
 
 export interface Recipe { id: string; name: string; inputs: Partial<Record<ItemId, number>>; output: [ItemId, number]; requires?: 'medic' | 'mechanic'; time: number }

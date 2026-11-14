@@ -22,6 +22,7 @@ import { loadCharacterAsset } from './art/skinned';
 import { loadAssets } from './art/assets';
 import { makePortraits } from './art/portraits';
 import { playMinigame } from './ui/minigames';
+import { FILMS, type Shot } from './story/films';
 import { loadSettings, saveSettings, type Settings } from './ui/settings';
 import { titleScreen, pauseScreen, settingsScreen, controlsScreen, squadBio, inventoryScreen, endScreen, resultsScreen, footText } from './ui/menus';
 import { cutscene, conversation, noteScreen } from './ui/story';
@@ -53,7 +54,7 @@ class App {
   offline = !!navigator.serviceWorker?.controller;
   private fps = h('div.fps.hidden'); private fpsAcc = 0; private fpsN = 0;
   private perf = { t: 0, n: 0, done: false };
-  private carry: Set<string> | null = null; private lost = false;
+  private carry: Set<string> | null = null; private lost = false; private pendingFilm: Shot[] | null = null;
   private loading = false;
 
   constructor() {
@@ -133,8 +134,9 @@ class App {
     this.screens.clear(); this.teardown();
     const save = this.freshSave(level, from);
     saveGame('autosave', save);
-    const shots = STORYBOARDS[board ?? level.intro ?? ''];
-    if (shots) { audio.setTheme('title'); cutscene(this.screens, shots, () => this.start(save)); } else this.start(save);
+    const film = FILMS[board ?? level.intro ?? ''], shots = STORYBOARDS[board ?? level.intro ?? ''];
+    if (film) { this.pendingFilm = film; this.start(save); }
+    else if (shots) { audio.setTheme('title'); cutscene(this.screens, shots, () => this.start(save)); } else this.start(save);
     this.updateTouch();
   }
 
@@ -165,6 +167,7 @@ class App {
         audio.setTheme(level.theme);
         this.warmUp(g);
         if (g.camp && !g.seenBeats.has('arrive')) { g.seenBeats.add('arrive'); this.scenes.push({ knot: CAMP_ARRIVE[level.id] }); }
+        else if (this.pendingFilm) { const f = this.pendingFilm; this.pendingFilm = null; this.playFilm(g, f); }
         else if (level.kind === 'chapter' && save.checkpoint === level.spawnX) this.hud.banner(`${level.number} — ${level.name}`);
       } finally { loading.remove(); this.loading = false; }
       this.perf = { t: 0, n: 0, done: false };
@@ -290,7 +293,42 @@ class App {
 
   // debug handles for automated playthroughs (tests/e2e) — not reachable from the UI
   debugStart(id: string | null): void { this.start(this.freshSave(levelById(id ?? 'ch1'), null)); }
-  debugSkip(): void { this.screens.clear(); this.scenes = []; this.lines = []; this.updateTouch(); }
+  /** Run an in-engine film over the live level: letterbox, captions, then hand the camera back. */
+  private playFilm(g: Game, film: Shot[]): void {
+    const el = h('div.film', {}, h('div.bar.top'), h('div.bar.bottom'), h('div.cap'), h('div.ttl'), h('button.skip', {}, 'Skip  ⏭'));
+    document.body.append(el); document.body.classList.add('filming');
+    const cap = el.querySelector('.cap') as HTMLElement, ttl = el.querySelector('.ttl') as HTMLElement;
+    let i = -1, timer = 0, done = false;
+    const end = () => {
+      if (done) return; done = true; clearTimeout(timer); removeEventListener('keydown', key, true);
+      g.director = null; el.classList.add('out'); document.body.classList.remove('filming');
+      setTimeout(() => el.remove(), 900);
+      const L = g.leader; g.cam.snap(L.x); this.input.flush();
+      this.hud?.banner(`${g.level.number} — ${g.level.name}`);
+    };
+    const next = () => {
+      if (done) return;
+      if (++i >= film.length) { end(); return; }
+      const s = film[i];
+      g.director = { x: s.x, to: s.to ?? s.x, y: s.y ?? 2.0, zoom: s.zoom, lift: s.lift ?? 0, mode: s.mode, dur: s.dur, t: 0, walk: !!s.walk, cut: true };
+      if (s.radio) audio.play('radioStatic');
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');      // a dip to black between cuts
+      cap.innerHTML = ''; ttl.innerHTML = '';
+      (s.lines ?? []).forEach((t, k) => { const p = h('p', {}, t); p.style.animationDelay = `${0.6 + k * 2.2}s`; if (t.startsWith('"')) p.classList.add('voice'); cap.append(p); });
+      if (s.title) ttl.append(h('small', {}, s.title[0]), h('b', {}, s.title[1]));
+      timer = window.setTimeout(next, s.dur * 1000);
+    };
+    const key = (e: KeyboardEvent) => {
+      if (e.code === 'Escape') { e.stopImmediatePropagation(); end(); }
+      else if (['Space', 'Enter', 'KeyE'].includes(e.code)) { e.stopImmediatePropagation(); clearTimeout(timer); next(); }
+    };
+    addEventListener('keydown', key, true);
+    (el.querySelector('.skip') as HTMLElement).onclick = end;
+    el.onclick = (e) => { if ((e.target as HTMLElement).tagName !== 'BUTTON') { clearTimeout(timer); next(); } };
+    next();
+  }
+
+  debugSkip(): void { (document.querySelector('.film .skip') as HTMLElement | null)?.click(); this.screens.clear(); this.scenes = []; this.lines = []; this.updateTouch(); }
 
   // ---------------------------------------------------------------- frame loop
   private frame(): void {

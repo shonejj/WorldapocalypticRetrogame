@@ -59,7 +59,7 @@ export const CHAPTER2: LevelDef = {
     { id: 'r_booth', kind: 'booth', w: 11, title: 'CHECKPOINT 9', spots: [
       { dx: 2.9, label: 'Search the lockers', loot: { ammo_rifle: 20, ammo_shells: 8 } }, { dx: 8, label: 'Open the crates', loot: { medkit: 1, scrap: 3 } }, { dx: 6.2, label: 'Read the trooper\'s notebook', note: 'n_trooper' }] },
   ],
-  pickups: [{ id: 'q1', x: 12, item: 'bottle', qty: 1 }, { id: 'q2', x: 41, item: 'cloth', qty: 2 }, { id: 'q3', x: 75, item: 'bottle', qty: 1 }, { id: 'q4', x: 108, item: 'ammo_9mm', qty: 8 }, { id: 'q5', x: 145, item: 'bandage', qty: 1 }, { id: 'q6', x: 160, item: 'bottle', qty: 1 }],
+  pickups: [{ id: 'q_fuel', x: 61.5, item: 'fuel', qty: 1 }, { id: 'q1', x: 12, item: 'bottle', qty: 1 }, { id: 'q2', x: 41, item: 'cloth', qty: 2 }, { id: 'q3', x: 75, item: 'bottle', qty: 1 }, { id: 'q4', x: 108, item: 'ammo_9mm', qty: 8 }, { id: 'q5', x: 145, item: 'bandage', qty: 1 }, { id: 'q6', x: 160, item: 'bottle', qty: 1 }],
   infected: [
     { id: 'y1', x: 16, type: 'common', state: 'idle', facing: 1 }, { id: 'y2', x: 27, type: 'common', state: 'wander' },
     { id: 'y3', x: 40, type: 'hound', state: 'wander' }, { id: 'y4', x: 47, type: 'common', state: 'dormant' }, { id: 'y5', x: 63, type: 'common', state: 'idle', facing: -1 },
@@ -80,6 +80,6 @@ export const CHAPTER2: LevelDef = {
     { id: 'rest', x0: 154, x1: 166, type: 'rest', intensity: 0.25, ink: 'bark_checkpoint', cam: { mode: 'iso' } },
     { id: 'gate', x0: 166, x1: 196, type: 'climax', intensity: 1, title: 'Checkpoint 9', cam: { zoom: 1.2, lift: 0.5 } },
   ],
-  objectives: [{ id: 'o_fuel', text: 'Find fuel for the checkpoint gate' }, { id: 'o_warden', text: 'Get past whatever guards the line' }, { id: 'o_gate', text: 'Open the quarantine gate' }],
+  objectives: [{ id: 'o_fuel', text: 'Find fuel — try the gas station' }, { id: 'o_warden', text: 'Get past whatever guards the line' }, { id: 'o_gate', text: 'Open the quarantine gate' }],
   goal: { x: 191, label: 'Fuel the gate motor', time: 3, needs: 'fuel', lockedInk: 'gate_locked', needsDead: 'warden', guardedInk: 'gate_guarded', doneInk: 'gate_open', objective: 'o_gate' },
 };

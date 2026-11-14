@@ -91,6 +91,8 @@ export class Game implements Host, AIWorld {
   paused = false; ended = false; private lastShot = -99;
   /** inside a fully 3D house (third person); the street simulation waits */
   house: House | null = null; private allLights: LightSpot[] = [];
+  /** in-engine film: the camera is the director's, the squad walks on cue */
+  director: { x: number; to: number; y: number; zoom: number; lift: number; mode?: 'iso' | 'flat'; dur: number; t: number; walk: boolean; cut: boolean } | null = null;
   /** set by the app: opens a minigame overlay */
   minigame: (k: MiniGame) => Promise<boolean> = async () => true;
 
@@ -496,10 +498,15 @@ export class Game implements Host, AIWorld {
     this.time += dt;
     if (this.house) { this.house.tick(dt, f); if (this.house.done && !this.fading) this.exitHouse(); return; }
     if (f && this.camp) { f.held.delete('fire'); f.held.delete('run'); for (const k of ['melee', 'throw', 'heal', 'crouch', 'reload'] as const) f.pressed.delete(k); }   // the safehouse is safe
-    if (f && !this.ended) this.commands(f);
+    if (this.director) {
+      // a film is running: the world lives, the squad only walks when the shot says so, nobody aggros
+      f = this.director.walk ? { held: new Set(), pressed: new Set(), moveX: 0.55 } : null;
+      this.player.frame = f;
+    }
+    if (f && !this.ended && !this.director) this.commands(f);
     // first sub-step gets the full frame; later sub-steps keep held state but no repeated one-shots
     if (this.ended) this.player.frame = null;
-    else if (f) this.player.frame = f;
+    else if (f || this.director) this.player.frame = f;
     for (const a of [...this.squad, ...this.infected]) {
       if (!a.alive) continue;
       const it: Intent = this.ended && a.team === 'squad' ? idle() : this.brains.get(a.id)!.think(a, this, dt);
@@ -511,7 +518,7 @@ export class Game implements Host, AIWorld {
     this.stepNeeds(dt);
     this.stepPickups();
     this.stepLures(dt);
-    if (!this.zone.def) this.stepBeats();
+    if (!this.zone.def && !this.director) this.stepBeats();
     const hunting = this.infected.filter((z) => z.alive && z.state === 'chase').length;
     if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) { audio.play('alert'); audio.stinger(); } }
     const suspicious = Math.max(0, ...this.infected.filter((z) => z.alive && Math.abs(z.x - this.leader.x) < 18).map((z) => z.suspicion));
@@ -535,6 +542,8 @@ export class Game implements Host, AIWorld {
     }
   }
   private stepPickups(): void {
+    // a key item in the pack ticks its objective, wherever it came from
+    if (this.stash.count('fuel') && this.level.objectives.some((o) => o.id === 'o_fuel') && !this.objectives.has('o_fuel')) this.setObjective('o_fuel', true);
     for (const p of this.pickups) {
       if (this.picked.has(p.id) || !this.squad.some((s) => s.alive && Math.abs(s.x - p.x) < 0.5)) continue;
       const got = this.stash.add(p.item, p.qty);
@@ -585,6 +594,15 @@ export class Game implements Host, AIWorld {
     this.r.isoK += ((mode === 'iso' ? 1 : 0) - this.r.isoK) * km;
     this.r.flatK += ((mode === 'flat' ? 1 : 0) - this.r.flatK) * km;
     this.r.swing += (L.vx * 0.5 - this.r.swing) * (1 - Math.exp(-2.2 * dt));
+    if (this.director) {
+      const d = this.director, k2 = 1 - Math.exp(-2.5 * dt);
+      d.t += dt; const u = Math.min(1, d.t / d.dur), e = u * u * (3 - 2 * u);
+      this.r.focus.set(d.x + (d.to - d.x) * e, d.y, 0); this.r.swing = 0;
+      if (d.cut) { this.r.zoom = d.zoom; this.r.lift = d.lift; this.r.isoK = d.mode === 'iso' ? 1 : 0; this.r.flatK = d.mode === 'flat' ? 1 : 0; d.cut = false; }
+      this.r.zoom += (d.zoom - this.r.zoom) * k2; this.r.lift += (d.lift - this.r.lift) * k2;
+      this.r.isoK += ((d.mode === 'iso' ? 1 : 0) - this.r.isoK) * k2; this.r.flatK += ((d.mode === 'flat' ? 1 : 0) - this.r.flatK) * k2;
+      this.cam.x = this.r.focus.x;
+    }
     this.r.shakeOffset.set(this.cam.offset.x, this.cam.offset.y, this.cam.offset.roll);
     if (this.house) { this.house.update(dt); this.fx.update(dt); audio.setIntensity(0.15); return; }
     audio.listenerX = this.cam.x;

@@ -180,6 +180,7 @@ MILLER: Somebody's still on duty.
 
 === gate_locked ===
 MILLER: Gate motor's dry. It wants fuel — a full can.
+MAYA: The gas station back down the road. There was a jerrycan by the pumps.
 -> END
 
 === gate_guarded ===

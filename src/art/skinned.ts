@@ -7,6 +7,7 @@ import type { AnimIn, Part, Pose } from '../game/rig';
 import { M } from './kit';
 import { weaponMesh, type WeaponKind } from './weapons';
 import { rimify, type Look } from './characters';
+import { survivorKit, fungus, infectedFx } from './outfits';
 
 /**
  * Skinned characters (art pass 4 — M1 "hero screen"): real CC0 people from the Quaternius
@@ -61,7 +62,7 @@ function faceOnly(m: THREE.SkinnedMesh, sex: Sex): void {
   m.geometry = m.geometry.clone(); m.geometry.setIndex(idx);
 }
 
-const INFECTED_SKIN = new THREE.Color(0x8e938a);   // bloodless grey pallor
+const INFECTED_SKIN = new THREE.Color(0xa8ac9a);   // bloodless grey pallor
 /**
  * Recolour a textured material to a palette colour while keeping the fabric's shading:
  * colour = mix(texture, luminance(texture) × lift, amount) × tint. Dark source fabrics (the outfit
@@ -125,6 +126,7 @@ export class SkinnedView {
   private phase: number;
   private undo = new Map<THREE.Object3D, THREE.Quaternion>();
   private boneScale = new Map<THREE.Bone, number>();
+  private blinkers: THREE.Mesh[] = [];
 
   constructor(readonly look: Look, readonly scale = 1) {
     this.phase = new Rng(look.seed * 7 + 3).next();
@@ -150,7 +152,7 @@ export class SkinnedView {
       const g = base.clone(), col = new Float32Array(g.getAttribute('position').count * 3); let o = 0;
       for (const [name, count] of base.userData.parts as [string, number][]) { const c = partCol(name); for (let i = 0; i < count; i++, o++) { col[o * 3] = c.r; col[o * 3 + 1] = c.g; col[o * 3 + 2] = c.b; } }
       g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-      const mat = tinted(cloth[0].material as THREE.Material, 0xffffff, 0.85); mat.vertexColors = true;
+      const mat = tinted(cloth[0].material as THREE.Material, 0xffffff, 0.85, 2.4); mat.vertexColors = true;
       const merged = new THREE.SkinnedMesh(g, mat); merged.name = 'outfit';
       cloth[0].parent!.add(merged); merged.bind(cloth[0].skeleton, cloth[0].bindMatrix);
       for (const m of cloth) m.removeFromParent();
@@ -162,7 +164,7 @@ export class SkinnedView {
     for (const m of parts) {
       const mat = m.material as THREE.MeshStandardMaterial;
       if (/superhero/i.test(mat.name)) { faceOnly(m, sex); m.material = tinted(mat, skin, inf ? 0.85 : 0.35, 1.4); }
-      else if (/eye/i.test(mat.name) && !/brow/i.test(m.name)) m.material = inf ? tinted(mat, 0xd8d0b0, 1, 1) : tinted(mat, 0xffffff, 0);
+      else if (/eye/i.test(mat.name) && !/brow/i.test(m.name)) { m.material = inf ? tinted(mat, 0xd8d0b0, 1, 1) : tinted(mat, 0xffffff, 0); if (inf) (m.material as THREE.MeshStandardMaterial).emissive.set(0x6a5a30); }
       else m.material = tinted(mat, look.hair, 1, 1.6);
       const skel = new THREE.Skeleton(m.skeleton.bones.map((b) => this.bone[b.name]), m.skeleton.boneInverses);
       this.model.add(m); m.bind(skel, m.bindMatrix); m.frustumCulled = false; m.castShadow = true; this.meshes.push(m);
@@ -177,6 +179,12 @@ export class SkinnedView {
       this.model.add(hs); hs.updateMatrixWorld(true); this.bone[BN.head].attach(hs);
     }
     if (inf) this.mutate(look.mutant ?? 'common', new Rng(look.seed * 31 + 7));
+    if (inf) for (const m of this.meshes) {
+      if (!(m as THREE.SkinnedMesh).isSkinnedMesh || /eye/i.test(m.name)) continue;
+      const mat = m.material as THREE.MeshStandardMaterial, prev = mat.onBeforeCompile, key = mat.customProgramCacheKey.bind(mat), isSkin = m.name !== 'outfit';
+      mat.onBeforeCompile = (sh, r) => { infectedFx(sh, look.seed, isSkin); prev.call(mat, sh, r); };
+      mat.customProgramCacheKey = () => `inf${isSkin}` + key();
+    }
     this.mats = this.meshes.map((m) => m.material as THREE.MeshStandardMaterial);
     this.mixer = new THREE.AnimationMixer(this.model);
     this.root.add(this.model);
@@ -188,6 +196,13 @@ export class SkinnedView {
     // pose once (idle) and attach gear in that pose with Object3D.attach (keeps world placement)
     this.play('Idle_Loop', 'lower'); this.play('Idle_Loop', 'upper'); this.mixer.update(0); this.model.updateMatrixWorld(true);
     this.gear();
+    if (look.kit) {
+      this.model.updateMatrixWorld(true);
+      survivorKit(look.kit, look, (bn, mesh, dx, dy, dz) => {
+        const b = this.bone[bn]; if (!b) return; const p = b.getWorldPosition(new THREE.Vector3());
+        mesh.position.add(new THREE.Vector3(p.x + dx, p.y + dy, p.z + dz)); this.model.add(mesh); mesh.updateMatrixWorld(true); b.attach(mesh);
+      }, (o) => this.blinkers.push(o));
+    }
     const sg = new THREE.CircleGeometry(0.45, 20); sg.rotateX(-Math.PI / 2);
     this.shadow = new THREE.Mesh(sg, new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.4, depthWrite: false }));
     this.shadow.position.y = 0.012; this.shadow.scale.z = 0.45; this.root.add(this.shadow);
@@ -203,11 +218,16 @@ export class SkinnedView {
     const sc = (n: string, k: number) => { const b = this.bone[n]; if (b) this.boneScale.set(b, k); };
     const grow = (n: string, mesh: THREE.Mesh, x: number, y: number, z: number) => {
       const b = this.bone[n]; if (!b) return; const p = b.getWorldPosition(new THREE.Vector3());
-      mesh.position.set(p.x + x, p.y + y, p.z + z); mesh.castShadow = true; this.model.add(mesh); mesh.updateMatrixWorld(true); b.attach(mesh); this.meshes.push(mesh as unknown as THREE.SkinnedMesh);
+      mesh.position.set(p.x + x, p.y + y, p.z + z); mesh.castShadow = true; this.model.add(mesh); mesh.updateMatrixWorld(true); b.attach(mesh); if ((mesh as THREE.Mesh).isMesh) this.meshes.push(mesh as unknown as THREE.SkinnedMesh);
     };
     const tumour = (r: number) => { const m = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), flesh); m.scale.set(R.range(0.7, 1.2), R.range(0.6, 1), R.range(0.7, 1.1)); return m; };   // lumpy, not balloons
     const spike = (len: number) => { const g = new THREE.ConeGeometry(0.03, len, 6); g.rotateX(-0.9); return new THREE.Mesh(g, bone); };
     this.model.updateMatrixWorld(true);
+    // the fungus: plates bursting from the head (most), shoulders and back (the old and the big ones)
+    const bloom = kind === 'runner' ? 1 : kind === 'brute' ? 1 : kind === 'common' ? (R.chance(0.6) ? 1 : 0) : kind === 'screamer' ? 1 : kind === 'crawler' ? 1 : 0;
+    if (bloom) grow(BN.head, fungus(R, kind === 'runner' ? 9 : 8, kind === 'runner' ? 0.11 : 0.1) as unknown as THREE.Mesh, R.range(-0.05, 0.05), 0.08, R.range(0.0, 0.07));
+    if (kind === 'brute') for (let k = 0; k < 3; k++) grow(k ? BN.spine3 : 'clavicle_l', fungus(R, 7, 0.11) as unknown as THREE.Mesh, R.range(-0.15, 0.15), 0.05, -0.12);
+    if (kind === 'common' && R.chance(0.35)) grow(BN.spine3, fungus(R, 4, 0.07) as unknown as THREE.Mesh, R.range(-0.1, 0.1), 0.1, -0.12);
     if (kind === 'common') {
       if (R.chance(0.5)) { const s = R.chance(0.5) ? 'l' : 'r'; sc(`upperarm_${s}`, 1.14); sc(`lowerarm_${s}`, 1.1); sc(`hand_${s}`, 1.25); }
       if (R.chance(0.4)) grow(BN.spine3, tumour(R.range(0.08, 0.13)), R.range(-0.12, 0.12), 0.08, -0.1);
@@ -355,6 +375,7 @@ export class SkinnedView {
         }
       }
     }
+    for (const o of this.blinkers) o.visible = Math.sin(i.t * 3.1 + this.phase * 6) > 0.6;
     for (const [b, k] of this.boneScale) b.scale.setScalar(k);   // mutations: absolute, so re-applying after the mixer is idempotent
 
     const holstered = !i.drawn && i.melee <= 0;

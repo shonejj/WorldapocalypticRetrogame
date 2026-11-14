@@ -23,6 +23,7 @@ const url = process.argv[2] || 'http://localhost:5173/', pick = process.argv[3] 
       const end = q('.screen .endtext'); if (end && !q('.results')) return { s: 'END', text: q('.screen .sub')?.textContent + ' | ' + end.textContent };
       const picks = [...document.querySelectorAll('.picks:not(.hidden) button')];
       if (picks.length) { (pick === 'last' ? picks[picks.length - 1] : picks[0]).click(); return { s: 'pick ' + picks.length }; }
+      if (q('.film .skip')) { q('.film .skip').click(); return { s: 'film' }; }
       if (q('.screen.cutscene')) { q('.screen.cutscene .skip').click(); return { s: 'cutscene' }; }
       if (q('.screen.talk')) return { s: 'talk', key: 'e' };
       if (q('.results .menu button')) { const r = q('.results').innerText.replace(/\n+/g, ' '); q('.results .menu button').click(); return { s: 'results', text: r }; }

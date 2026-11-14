@@ -19,9 +19,9 @@ export const QUALITY_PRESETS: Record<'high' | 'medium' | 'low', Quality> = {
  * 12-tap disc at the low pixel-art resolution: cheap enough for phones.
  */
 const DofShader = {
-  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uNear: { value: 0.3 }, uFar: { value: 900 }, uFocus: { value: 10 }, uTexel: { value: new THREE.Vector2(1 / 640, 1 / 360) }, uStrength: { value: 1 } },
+  uniforms: { tDiffuse: { value: null }, tDepth: { value: null }, uNear: { value: 0.3 }, uFar: { value: 900 }, uFocus: { value: 10 }, uTexel: { value: new THREE.Vector2(1 / 640, 1 / 360) }, uStrength: { value: 1 }, uOutline: { value: 1 } },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uFocus; uniform vec2 uTexel; uniform float uStrength; varying vec2 vUv;
+  fragmentShader: `uniform sampler2D tDiffuse; uniform sampler2D tDepth; uniform float uNear; uniform float uFar; uniform float uFocus; uniform vec2 uTexel; uniform float uStrength; uniform float uOutline; varying vec2 vUv;
     float viewZ(vec2 uv){ float d = texture2D(tDepth, uv).x; return (uNear * uFar) / ((uFar - uNear) * d - uFar); }
     void main(){
       float z = -viewZ(vUv);
@@ -29,6 +29,14 @@ const DofShader = {
       float farB = smoothstep(uFocus + 14.0, uFocus + 45.0, z) * 0.75;    // the city behind the gaps
       float coc = max(nearB, farB) * 2.6 * uStrength;
       vec4 c = texture2D(tDiffuse, vUv);
+      // pixel-art outline: where this pixel is clearly NEARER than a neighbour, it is the edge of a
+      // figure or object — ink it one art-pixel dark (sprites in Replaced / Blasphemous read this way)
+      if (uOutline > 0.0 && z < uFocus + 6.0) {
+        float zr = -viewZ(vUv + vec2(uTexel.x, 0.0)), zl = -viewZ(vUv - vec2(uTexel.x, 0.0)), zu = -viewZ(vUv + vec2(0.0, uTexel.y)), zd = -viewZ(vUv - vec2(0.0, uTexel.y));
+        float gap = max(max(zr, zl), max(zu, zd)) - z;
+        float edge = smoothstep(0.25 + z * 0.02, 0.6 + z * 0.04, gap);
+        c.rgb = mix(c.rgb, c.rgb * 0.18, edge * uOutline);
+      }
       if (coc < 0.15) { gl_FragColor = c; return; }
       vec4 acc = c; float n = 1.0;
       for (int i = 0; i < 12; i++) { float a = float(i) * 2.39996; float r = coc * sqrt((float(i) + 0.5) / 12.0);
@@ -197,7 +205,7 @@ export class Renderer {
     const u = this.dof.uniforms, rb = this.composer.readBuffer;
     u.tDepth.value = rb.depthTexture; u.uNear.value = this.camera.near; u.uFar.value = this.camera.far;
     u.uFocus.value = focus; u.uTexel.value.set(1 / rb.width, 1 / rb.height);
-    this.grade.uniforms.uRes.value.set(rb.width, rb.height); this.grade.uniforms.uBands.value = this.quality.pixel === 0 ? 0 : 34;
+    this.grade.uniforms.uRes.value.set(rb.width, rb.height); u.uOutline.value = this.quality.pixel === 0 ? 0 : 1; this.grade.uniforms.uBands.value = this.quality.pixel === 0 ? 0 : 34;
     this.composer.render();
   }
 
