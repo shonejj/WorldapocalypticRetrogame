@@ -69,6 +69,22 @@ still, wants third-person areas inside buildings, minigames, more camera variety
 - [x] Camera variety on the street: isometric stretches and flat long-lens silhouette sections (per beat)
 - [x] Enemy idle life on the street: feeders hunch over bodies, idlers shuffle and turn, wanderers roam, half the sleepers replaced by feeders
 
+### M9 — third feedback round: critique and redesign
+Critique (as played): everyone looked like the same person in a black suit; infected were grey humans; rooms
+felt like dioramas (sleepers and feeders never reacted to the squad walking in); the 3D houses were grey
+boxes; the intro was abstract colour blocks you could not read; "Continue" showed with no save; the chapter 2
+fuel could be silently left behind by a full pack. Free asset research: the only free animated zombies reachable
+from this build environment (Quaternius via an npm CC0 mirror) are chibi/cartoon and would break the tone, so
+the existing realistic CC0 Quaternius bodies are kept and redesigned in code.
+- [x] Four distinct survivor silhouettes (hood + chest rig / medic vest + cross bag / long coat + goggles / antenna + scarf)
+- [x] Infected: veined, bruised, bloodied skin; filthy rags; fungal plates from heads and backs; hunch and lurch
+- [x] Pixel outline pass (one art pixel, from depth edges) for sprite-like figures
+- [x] Chapter openings filmed in-engine over the live level (letterbox, cuts, big captions), skippable
+- [x] Houses dressed (wallpaper, wainscot, frames, rugs, debris, plants, light shafts, dust); warmer light
+- [x] Rooms react to the door; Continue only with a save; key items always fit; second fuel can at the pumps
+- [ ] Hand-drawn sprite characters (would need an artist or a reachable CC0 sprite source)
+- [ ] Real-device performance pass (only measured in software rendering here)
+
 ## Status (v0.3.0)
 Everything above is implemented and verified by `npm run check` and the headless campaign run. Still open, in order of value:
 hand-drawn sprite characters (the cast is still 3D models through the pixel pass), per-chapter enemy variants, a dodge move,
