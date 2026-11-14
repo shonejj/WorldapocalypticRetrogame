@@ -89,7 +89,7 @@ function tinted(src: THREE.Material, color: number | THREE.Color, amount = 0.85,
 }
 
 // ------------------------------------------------------------------ the view
-const ARM_UP = new THREE.Vector3(1, 0, 0), WORLD_Z = new THREE.Vector3(0, 0, 1);
+const ARM_UP = new THREE.Vector3(1, 0, 0), WORLD_Z = new THREE.Vector3(0, 0, 1), FWD = new THREE.Vector3(0, 0, 1);
 const _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion(), _v = new THREE.Vector3();
 
 /**
@@ -367,8 +367,10 @@ export class SkinnedView {
         const pull = moving ? Math.sin(i.t * 4.5) * 0.6 : 0;
         if (i.attack <= 0) { rot(arm('l'), -1.6 + pull); rot(arm('r'), -1.6 - pull); }
       } else {
-        const hunch = g === 'sprint' ? 0.35 : g === 'brute' ? 0.25 : g === 'scream' ? 0.15 : 0.42;
-        rot(spine, hunch); rot(neck, g === 'scream' ? -0.45 + Math.sin(i.t * 7) * 0.05 : -0.25 + Math.sin(i.t * 2.3) * 0.08);
+        const hunch = g === 'sprint' ? 0.5 : g === 'brute' ? 0.32 : g === 'scream' ? 0.15 : 0.62;
+        rot(spine, hunch);
+        // the lurch: shamblers roll their weight from side to side and drop one shoulder
+        if (g === 'shamble' || g === 'brute') { const lurch = Math.sin(i.t * (moving ? 3.4 : 1.1) + this.phase * 6) * (moving ? 0.16 : 0.06) + (this.phase - 0.5) * 0.2; rotateModelSpace(this.b(BN.spine1), this.model, FWD, lurch, this.undo); } rot(neck, g === 'scream' ? -0.45 + Math.sin(i.t * 7) * 0.05 : -0.25 + Math.sin(i.t * 2.3) * 0.08);
         if (i.attack <= 0 && !(i.scream ?? 0) && !(i.run && !moving)) {
           const reach = i.run ? -1.25 : -0.35 + Math.sin(i.t * 1.7) * 0.08;
           rot(arm('l'), reach + Math.sin(i.t * 2) * 0.1); rot(arm('r'), reach);

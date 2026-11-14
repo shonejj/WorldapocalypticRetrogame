@@ -8,6 +8,7 @@ import type { Game } from '../game/game';
 import type { InputFrame } from '../core/input';
 import { audio } from '../core/audio';
 import { hashString } from '../core/math';
+import { dress, wallpaper, type Dressing } from './dress';
 import { HOUSE_INFECTED, type HouseDef, type HouseSpot, type MiniGame } from './plans';
 
 /**
@@ -48,6 +49,7 @@ export class House {
   /** a minigame is open: the house waits */
   busy = false;
   private time = 0;
+  private dressing!: Dressing;
   private lastF: InputFrame | null = null; private camT = 1; private faded = false;
 
   constructor(private g: Game, readonly def: HouseDef, readonly doorX: number, private play: (game: MiniGame) => Promise<boolean>) {
@@ -55,14 +57,14 @@ export class House {
     const scene = g.r.scene;
     for (const o of scene.children) if (o.visible && o !== g.lights.group && o.name !== 'fx') { o.visible = false; this.hidden.push(o); }
     // ---- geometry
-    const B = new Batch(), wall = M.plaster(def.wall, 5), floor = M.wood(def.floor), trim = M.wood('#2a1d14'), dark = M.dark(), cloth = M.cloth(0x4a3a36), metal = M.metal('#44494c'), pane = M.emissive(0x7d9cb4, 0.55), warm = M.emissive(0xffb060, 4);
+    const B = new Batch(), wall = wallpaper(def.wall, hashString(def.id)), floor = M.wood(def.floor), trim = M.wood('#2a1d14'), dark = M.dark(), cloth = M.cloth(0x4a3a36), metal = M.metal('#44494c'), pane = M.emissive(0x7d9cb4, 0.55), warm = M.emissive(0xffb060, 4);
     const rows = this.grid.length, cols = this.grid[0].length;
     let start: [number, number] = [1, 1];
     for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) {
       const ch = this.grid[j][i], [x, z] = this.cell(i, j);
       if (ch === ' ') continue;
       if (ch === '#' || ch === 'w') {
-        B.add(wall, box(C, H, C, x, H / 2, z, { tile: 2.2 }));
+        B.add(wall, box(C, H, C, x, H / 2, z, { tile: 1.1 }));
         if (ch === 'w') {
           const side = j === 0 ? 1 : -1;
           B.add(pane, box(C * 0.5, 1.0, 0.05, x, 1.5, z + side * (C / 2 + 0.01)));
@@ -108,6 +110,8 @@ export class House {
       }
     }
     this.exit ??= start;
+    const windows: [number, number][] = []; for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) if (this.grid[j][i] === 'w') windows.push([i, j]);
+    this.dressing = dress(this.root, B, this.grid, (i, j) => this.cell(i, j), C, H, hashString(def.id) + 7, this.exit ?? start, windows);
     this.root.add(B.build({ castShadow: false, receiveShadow: true }));
     scene.add(this.root);
     // ---- player
@@ -371,6 +375,10 @@ export class House {
     this.torch.x = this.px - fz * 0.25 + fx * 0.3; this.torch.y = 1.5; this.torch.z = this.pz + fx * 0.25 + fz * 0.3;
     this.torch.aim = { x: this.px + fx * 8, y: 0.6 + this.pitch * 4, z: this.pz + fz * 8 };
     this.g.lights.update(this.px, this.time);
+    const dp = this.dressing.dust.geometry.getAttribute('position') as THREE.BufferAttribute;
+    for (let k = 0; k < dp.count; k++) { dp.setY(k, ((dp.getY(k) + dt * (0.03 + (k % 7) * 0.006)) % (H - 0.2)) + 0.0); dp.setX(k, dp.getX(k) + Math.sin(this.time * 0.3 + k) * dt * 0.02); }
+    dp.needsUpdate = true;
+    for (const s of this.dressing.shafts) ((s as THREE.Mesh).material as THREE.MeshBasicMaterial).opacity = 0.06 + Math.sin(this.time * 0.4) * 0.015;
     for (const sw of this.swing) { sw.t = Math.min(1, sw.t + dt * 1.5); sw.o.rotation.y = sw.from + (1 - (1 - sw.t) ** 3) * 1.6; }
     for (const s of this.spots) if (s.mesh && !s.done) { s.mesh.rotation.y += dt * 1.6; s.mesh.position.y = 1.35 + Math.sin(this.time * 2 + s.i) * 0.04; }
     audio.listenerX = 0;
@@ -387,7 +395,7 @@ export class House {
   private place(cam: THREE.PerspectiveCamera): void {
     const [fx, fz] = this.fwd, rx = -fz, rz = fx, aimK = this.aim * 0.35, s = this.g.r.shakeOffset;
     const head = new THREE.Vector3(this.px, this.g.leader.crouching ? 1.15 : 1.55, this.pz);
-    const B0 = 3.0 - aimK * 1.2, side = 0.7 + aimK * 0.1;
+    const B0 = 2.9 - aimK * 1.1, side = 0.95 + aimK * 0.1;
     // march from the head toward the wanted spot and stop short of the first wall; the closer the
     // wall, the higher the camera rides, so it looks down over the shoulder instead of into the hair
     const dirx = -fx * B0 + rx * side, dirz = -fz * B0 + rz * side, len = Math.hypot(dirx, dirz);

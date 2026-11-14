@@ -519,6 +519,7 @@ export class Game implements Host, AIWorld {
     this.stepPickups();
     this.stepLures(dt);
     if (!this.zone.def && !this.director) this.stepBeats();
+    if (this.roomStir && this.time >= this.roomStir.t) { const st = this.roomStir; this.roomStir = null; if (this.zone.def) this.noise(st.x, st.r, null, false); }
     const hunting = this.infected.filter((z) => z.alive && z.state === 'chase').length;
     if ((hunting > 0) !== this.alert) { this.alert = hunting > 0; this.ev.emit('alert', { on: this.alert }); if (this.alert) { audio.play('alert'); audio.stinger(); } }
     const suspicious = Math.max(0, ...this.infected.filter((z) => z.alive && Math.abs(z.x - this.leader.x) < 18).map((z) => z.suspicion));
@@ -660,7 +661,11 @@ export class Game implements Host, AIWorld {
     this.zone = z; this.using = null; this.focus = null; this.hold.on = false;
     this.setMood(z.mood); this.cam.snap(this.leader.x); this.r.zoom = z.def ? ROOM_ZOOM : 1; this.r.lift = z.def ? 0.4 : 0; this.beat = null;
     for (const a of [...this.squad, ...this.infected]) if (a.alive) this.updateActorView(a, 1);
+    // the door is heard: a beat after you walk in, whatever lives here stirs and turns toward it
+    // (sneak in and only the closest notice). Rooms should never feel like a diorama.
+    if (z.def) { const sneak = this.leader.crouching, at = this.leader.x; this.roomStir = { t: this.time + (sneak ? 2.5 : 1.1), x: at, r: sneak ? 4 : 9 }; }
   }
+  private roomStir: { t: number; x: number; r: number } | null = null;
   private enterRoom(id: string): void {
     const z = this.zones.find((q) => q.id === id); if (!z || this.fading) return;
     audio.play('door', this.leader.x, 0.9);
